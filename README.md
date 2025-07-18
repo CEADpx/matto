@@ -27,71 +27,41 @@ The problem consists of a 2D beam, fixed on the left edge and a traction applied
 ### Results
 <img src="images/topology_compare.png">
 
-# How to access FEniTop
+# How to run top_optim
 
-### Installation of the coding environment
-FEniTop relys on the coding evironment of FEniCSx and a few other dependencies.
-To install the coding environment, we can follow the procedure below.
-
-#### Short version
-
-- Install [FEniCSx](https://github.com/FEniCS/dolfinx) of version 0.7.3.
-- Install [PyVista](https://github.com/pyvista/pyvista).
-- Install Xvfb with `apt-get -qq update && apt-get -y install libgl1-mesa-dev xvfb`.
-
-#### Detailed version
-
-To install the coding environment in one shot, we recommend to use [Docker](https://www.docker.com/) containers. Take Windows 11 as an example, we can follow the steps below.
-
-- Run `wsl --install` in Windows PowerShell, which automatically enables the features necessary to run [Windows Subsystem for Linux (WSL)](https://learn.microsoft.com/en-us/windows/wsl/install) and installs the Ubuntu distribution of Linux.
-- Install [Docker Desktop](https://www.docker.com/products/docker-desktop) and [Visual Studio Code](https://code.visualstudio.com/).
-- Start Docker Desktop, select `settings`-`Resources`-`WSL integration`, and activate Ubuntu we just installed if not activated.
-- Start Ubuntu and run `docker pull jiayingqi/dolfinx-fenitop`, which pulls an image containing all required packages (FEniCSx+PyVista+Xvfb).
-- Use the pulled image to create a Docker container by running `docker run -it --name fenitop_container --shm-size=1024m -v /mnt/d/windows_folder_name:/shared jiayingqi/dolfinx-fenitop` in Ubuntu. Change `d` to the actual disk and change `windows_folder_name` to the acutual folder.
-- Start Visual Studio Code and select `Extensions` (`Ctrl`+`Shift`+`X`). Search for and install `Docker` and `Remote Development` extensions.
-- Select `Docker` extension we just installed, and we should see a container named as `fenitop_container`. Right click on this container and select `Start` and then `Attach Visual Studio Code`.
-- A new window will pop up. In this window, select `File`-`Open Folder` (`Ctrl`+`K` and then `Ctrl`+`O`) and open the `shared` folder.
-- Now we have successfully created the coding environment inside this folder. A good thing is whatever changes you make in this `shared` folder will be synchronized to `windows_folder_name` and vice versa.
-
-### Installation of FEniTop
-To install FEniTop, simply execute the command in your terminal (such as the terminal of Visual Studio Code).
+### Installation and setup of top_optim
+To copy the repository and set it up, simply copy these commands into your terminal: 
 ```
-git clone https://github.com/missionlab/fenitop
+git clone https://github.com/CEADpx/top_optim
+cd top_optim
 ```
+Create and activate the environment:
+'''
+conda env create -f environment.yml
+conda activate top_optim_env
+'''
 
-### How to run FEniTop scripts
-To run FEniTop scripts, simply execute the following commands in your terminal.
+### Running an example
+To run an example, simply execute using:
+'''
+python3 Linear_input.py
+'''
+Note: **fenitop** was created to run the code in parallel. Such features do not work in **top_optim** for simplicity.  
+.
+## Authors and citation
 
-- 2D cantilever beam with a structured mesh: `mpirun -n 8 python3 scripts/beam_2d.py`
-
-
-## Authors, sponsors, and citation
+### Authors 
+- Ian Galloway (ian.galloway@mines.sdsmt.edu)
+- Prashant Jha (prashant.jha@sdsmt.edu)
 
 ### Authors
 - Yingqi Jia (yingqij2@illinois.edu)
 - Chao Wang (chaow4@illinois.edu)
 - Xiaojia Shelly Zhang (zhangxs@illinois.edu)
 
-### Sponsors
-- U.S. National Science Foundation (NSF) EAGER Award CMMI-2127134
-- U.S. Defense Advanced Research Projects Agency (DARPA) Young Faculty Award (N660012314013)
-- NSF CAREER Award CMMI-2047692
-- NSF Award CMMI-2245251
 
-### Citation
+### Citation for fenitop
+This project builds directly on the foundation provided by [FEniTop](https://github.com/missionlab/fenitop), which made it possible to develop and experiment with advanced topology optimization methods in FEniCSx. Huge thanks to the original authors for making their code public — top_optim would not exist without it.
 - Jia, Y., Wang, C. & Zhang, X.S. FEniTop: a simple FEniCSx implementation for 2D and 3D topology optimization supporting parallel computing. Struct Multidisc Optim 67, 140 (2024). https://doi.org/10.1007/s00158-024-03818-7
 
-```
-@article{jia_fenitop_2024,
-  title = {{FEniTop}: A Simple {FEniCSx} Implementation for {2D} and {3D} Topology Optimization Supporting Parallel Computing},
-  shorttitle = {FEniTop},
-  author = {Jia, Yingqi and Wang, Chao and Zhang, Xiaojia Shelly},
-  year = {2024},
-  month = aug,
-  journal = {Structural and Multidisciplinary Optimization},
-  volume = {67},
-  number = {140},
-  issn = {1615-1488},
-  doi = {10.1007/s00158-024-03818-7},
-}
-```
+
