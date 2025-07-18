@@ -1,5 +1,5 @@
 # top_optim
-**topoptim** is a personal research fork of [FEniTop](https://github.com/missionlab/fenitop), an open-source topology optimization program built on [FEniCSx](https://fenicsproject.org). This project extends the original framework of **FEniTop** to include non-linear models, including the St. Vernant and NeoHookean models. 
+**topoptim** is a research fork of [FEniTop](https://github.com/missionlab/fenitop), an open-source topology optimization program built on [FEniCSx](https://fenicsproject.org). This project extends the original framework of **FEniTop** to include non-linear models, including the St. Vernant and NeoHookean models. 
 
 The program consists of an input file which prescribes the FEM setup and optimization settings, and six different modules which perform the optimization routine including: 
 - **topopt.py** Runs the full optimization loop by calling on other modules and creates a results folder.
@@ -9,7 +9,7 @@ The program consists of an input file which prescribes the FEM setup and optimiz
 - **optimize.py** Employs the Optimality Criteria (OC) or Method of Moving Asymptotes (MMA) optimizers to update the design variables based off of the sensitivities.  
 - **utility.py** Provides auxiliary functions, including plotters, communicators, and classes to wrap and solve linear and non-linear problems.
 
-#Implementation of Non-Linear Models
+# Implementation of Non-Linear Models
 The non-linear models were implemented into the **FEniTop** framework with only a few additions:
 - Update program to use new version of FEniCSx 0.9.0
 - Creation of **WrapNonlinearProblem** class to wrap a residual problem and solve iteratively.
@@ -17,14 +17,14 @@ The non-linear models were implemented into the **FEniTop** framework with only 
 - Implementation of incremental load stepping for nonlinear problems, where tractions are scaled progressively across a defined number of steps. At each step, the nonlinear problem is solved and updated via **WrapNonlinearProblem.solve_fem()**, improving stability and convergence under large deformations.
 - New sensitivity class which can be applied to both linear and nonlinear problems, utilizing automatic differentiation and an adjoint sensitivity solve via a transposed linear system  to assemble the full derivative. 
 
-#Optimization Response
+# Optimization Response
 To analyze the behavior of nonlinear models against the linear elastic model, a comparison test is performed. Each model solves the same problem with identical input parameters and settings. Three different problems are setup, each with increasing tractions to highlight how these models change with load magnitude when all other variables are held constant.
 
-###Problem Setup
+### Problem Setup
 The problem consists of a 2D beam, fixed on the left edge and a traction applied in the downward direction over a small length on the right side. 
 <img src="images/mechanism_2d.jpg">
 
-###Results
+### Results
 <img src="images/topology_compare.png">
 
 # How to access FEniTop
