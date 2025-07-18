@@ -54,12 +54,6 @@ Note: **fenitop** was created to run the code in parallel. Such features do not 
 - Ian Galloway (ian.galloway@mines.sdsmt.edu)
 - Prashant Jha (prashant.jha@sdsmt.edu)
 
-### Authors
-- Yingqi Jia (yingqij2@illinois.edu)
-- Chao Wang (chaow4@illinois.edu)
-- Xiaojia Shelly Zhang (zhangxs@illinois.edu)
-
-
 ### Citation for fenitop
 This project builds directly on the foundation provided by [FEniTop](https://github.com/missionlab/fenitop), which made it possible to develop and experiment with advanced topology optimization methods in FEniCSx. Huge thanks to the original authors for making their code public — top_optim would not exist without it.
 - Jia, Y., Wang, C. & Zhang, X.S. FEniTop: a simple FEniCSx implementation for 2D and 3D topology optimization supporting parallel computing. Struct Multidisc Optim 67, 140 (2024). https://doi.org/10.1007/s00158-024-03818-7
