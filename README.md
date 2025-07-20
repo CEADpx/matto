@@ -36,16 +36,17 @@ git clone https://github.com/CEADpx/top_optim
 cd top_optim
 ```
 Create and activate the environment:
-'''
+
+```
 conda env create -f environment.yml
 conda activate top_optim_env
-'''
+```
 
 ### Running an example
-To run an example, simply execute using: 'python3 Linear_input.py'
+To run an example, simply execute using: `python3 Linear_input.py`
 
 Note: **fenitop** was created to run the code in parallel. Such features do not work in **top_optim** for simplicity.  
-.
+
 ## Authors and Refrence
 
 ### Authors 
