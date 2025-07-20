@@ -22,7 +22,7 @@ To analyze the behavior of nonlinear models against the linear elastic model, a 
 
 ### Problem Setup
 The problem consists of a 2D beam, fixed on the left edge and a traction applied in the downward direction over a small length on the right side. 
-<img src="images/problem_setup.jpg">
+<img src="images/problem_setup.png">
 
 ### Results
 <img src="images/topology_compare.png">
