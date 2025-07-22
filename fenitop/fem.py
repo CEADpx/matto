@@ -1,3 +1,34 @@
+"""
+Authors:
+- Yingqi Jia (yingqij2@illinois.edu)
+- Chao Wang (chaow4@illinois.edu)
+- Xiaojia Shelly Zhang (zhangxs@illinois.edu)
+
+Sponsors:
+- U.S. National Science Foundation (NSF) EAGER Award CMMI-2127134
+- U.S. Defense Advanced Research Projects Agency (DARPA) Young Faculty Award
+  (N660012314013)
+- NSF CAREER Award CMMI-2047692
+- NSF Award CMMI-2245251
+
+Reference:
+- Jia, Y., Wang, C. & Zhang, X.S. FEniTop: a simple FEniCSx implementation
+  for 2D and 3D topology optimization supporting parallel computing.
+  Struct Multidisc Optim 67, 140 (2024).
+  https://doi.org/10.1007/s00158-024-03818-7
+"""
+
+"""
+Modifications by Ian Galloway (ian.galloway@mines.sdsmt.edu) and Prashant Jha (prashant.jha@sdsmt.edu)
+
+Edits to fem.py:
+- Custon definition of traction constants for hyperelastic problems to support load stepping
+- If "hyperelastic" = True, define a nonlinear residual and use `WrapNonlinearProblem`
+- Added support for multiple hyperelastic models: compressible Neo-Hookean (1), incompressible Neo-Hookean (2), and St. Venant–Kirchhoff
+- Changed compliance definition from internal strain energy to external work (applied to both linear and nonlinear cases)
+- All other original FEniTop functionality remains unchanged for linear problems
+"""
+
 import os
 import numpy as np
 import time
@@ -107,10 +138,10 @@ def form_fem(fem_params, opt):
     
         # Stored strain energy density 
         if fem_params["hyperModel"] == "neoHookean1":
-            W = (mu / 2) * (J**(-2/3)*Ic - 3) + (_lambda/2)*(J - 1)**2   # Neo-Hookean model 1
+            W = (mu / 2) * (J**(-2/3)*Ic - 3) + (_lambda/2)*(J - 1)**2   # Neo-Hookean model 1 (incompressible) 
         elif fem_params["hyperModel"] == "neoHookean2":
-            W = (mu / 2) * (Ic - 3 - 2*ufl.ln(J)) + (_lambda/2)*(J - 1)**2   # Neo-Hookean model 2
-        elif fem_params["hyperModel"] == "stVernant":
+            W = (mu / 2) * (Ic - 3 - 2*ufl.ln(J)) + (_lambda/2)*(J - 1)**2   # Neo-Hookean model 2 (compressible)
+        elif fem_params["hyperModel"] == "stVenant":
             W = (_lambda/2)*(ufl.tr(Egreen))**2 + mu*ufl.tr(Egreen*Egreen)    # St Vernant model
         P = ufl.diff(W, F)             # First Piola-Kirchhoff stress tensor
 
