@@ -1,3 +1,31 @@
+"""
+Authors:
+- Yingqi Jia (yingqij2@illinois.edu)
+- Chao Wang (chaow4@illinois.edu)
+- Xiaojia Shelly Zhang (zhangxs@illinois.edu)
+
+Sponsors:
+- U.S. National Science Foundation (NSF) EAGER Award CMMI-2127134
+- U.S. Defense Advanced Research Projects Agency (DARPA) Young Faculty Award
+  (N660012314013)
+- NSF CAREER Award CMMI-2047692
+- NSF Award CMMI-2245251
+
+Reference:
+- Jia, Y., Wang, C. & Zhang, X.S. FEniTop: a simple FEniCSx implementation
+  for 2D and 3D topology optimization supporting parallel computing.
+  Struct Multidisc Optim 67, 140 (2024).
+  https://doi.org/10.1007/s00158-024-03818-7
+"""
+
+"""
+Modifications by Ian Galloway (ian.galloway@mines.sdsmt.edu) and Prashant Jha (prashant.jha@sdsmt.edu)
+
+Edits to utility.py:
+- Added `WrapNonlinearProblem`, which wraps a nonlinear residual and 
+  sets up an iterative Newton solver to find the displacement field u such that R(u) ≈ 0
+"""
+
 from dolfinx.fem.petsc import NonlinearProblem as DolfinxNonlinearProblem
 from dolfinx.nls.petsc import NewtonSolver
 import numpy as np

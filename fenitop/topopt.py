@@ -1,3 +1,34 @@
+"""
+Authors:
+- Yingqi Jia (yingqij2@illinois.edu)
+- Chao Wang (chaow4@illinois.edu)
+- Xiaojia Shelly Zhang (zhangxs@illinois.edu)
+
+Sponsors:
+- U.S. National Science Foundation (NSF) EAGER Award CMMI-2127134
+- U.S. Defense Advanced Research Projects Agency (DARPA) Young Faculty Award
+  (N660012314013)
+- NSF CAREER Award CMMI-2047692
+- NSF Award CMMI-2245251
+
+Reference:
+- Jia, Y., Wang, C. & Zhang, X.S. FEniTop: a simple FEniCSx implementation
+  for 2D and 3D topology optimization supporting parallel computing.
+  Struct Multidisc Optim 67, 140 (2024).
+  https://doi.org/10.1007/s00158-024-03818-7
+"""
+
+"""
+Modifications by Ian Galloway (ian.galloway@mines.sdsmt.edu) and Prashant Jha (prashant.jha@sdsmt.edu)
+
+Edits to topopt.py:
+- The overall structure of topopt remains the same
+- Introduced incremental load stepping for hyperelastic problems
+- Added periodic saving of intermediate results using `opt["sim_image_output_interval"]` and `opt["sim_output_interval"]`
+- Introduced final summary output saved to `final_results.txt`, including final displacement, compliance, and max prescribed traction
+- Ensured the final design is always saved, even if the last iteration does not align with output intervals
+"""
+
 import os
 import numpy as np
 import time
@@ -157,15 +188,6 @@ def topopt(fem_params, opt):
             f"FINAL max abs displacement: {max_disp:.4e}\n"
             f"FINAL compliance: {C_value:.4f}\n"
         )
-    
-        # Get traction info
-        if fem_params["hyperelastic"]:
-            traction = fem_params["traction_bcs"][0]["traction_max"]
-        else:
-            traction = fem_params["traction_bcs"][0][0]
-    
-        # Append traction info
-        final_report += f"Max prescribed traction: {traction}\n"
     
         # Write to file
         with open(os.path.join(opt["output_dir"], "final_results.txt"), "w") as f:

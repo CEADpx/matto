@@ -1,3 +1,36 @@
+"""
+Authors:
+- Yingqi Jia (yingqij2@illinois.edu)
+- Chao Wang (chaow4@illinois.edu)
+- Xiaojia Shelly Zhang (zhangxs@illinois.edu)
+
+Sponsors:
+- U.S. National Science Foundation (NSF) EAGER Award CMMI-2127134
+- U.S. Defense Advanced Research Projects Agency (DARPA) Young Faculty Award
+  (N660012314013)
+- NSF CAREER Award CMMI-2047692
+- NSF Award CMMI-2245251
+
+Reference:
+- Jia, Y., Wang, C. & Zhang, X.S. FEniTop: a simple FEniCSx implementation
+  for 2D and 3D topology optimization supporting parallel computing.
+  Struct Multidisc Optim 67, 140 (2024).
+  https://doi.org/10.1007/s00158-024-03818-7
+"""
+
+"""
+Modifications by Ian Galloway (ian.galloway@mines.sdsmt.edu) and Prashant Jha (prashant.jha@sdsmt.edu)
+
+Edits to sensitivity.py:
+- The overall structure of the Sensitivity class remains intact
+- The computation of dCdrho and dUdrho has been modified
+- Compliant mechanism support has been removed, dUdrho is now set to zero
+- dCdrho has been reformulated using the adjoint method, solving a transposed linear system.
+  The new formulation is based on differentiating the compliance and internal force,
+  allowing accurate sensitivity computation for nonlinear problems.
+  This replaces the simplified expression used in the original FEniTop.
+"""
+
 import ufl
 from mpi4py import MPI
 from dolfinx.fem import form, assemble_scalar
@@ -23,12 +56,12 @@ class Sensitivity():
         self.dVdrho_vec.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
         self.dVdrho_vec /= self.total_volume
 
-        #Displacement holder
+        # Displacement holder
         self.dUdrho_vec = rho_phys.x.petsc_vec.copy()
         self.u_field, self.lambda_field = u_field, lambda_field
         self.problem = problem
 
-        #Compliance (via adjoint)
+        # Compliance (via adjoint)
         self.C_form = form(opt["compliance"])
 
         self.dCdrho_form = form(ufl.derivative(opt["compliance"], rho_phys))  
@@ -50,12 +83,12 @@ class Sensitivity():
             self.prod_vec.destroy()
 
     def evaluate(self):
-        #Volume
+        # Volume
         actual_volume = self.comm.allreduce(assemble_scalar(self.V_form), op=MPI.SUM)
         V_value = actual_volume / self.total_volume
         self.dVdrho_vec_copy = self.dVdrho_vec.copy()
 
-        #Compliance
+        # Compliance
         C_value = self.comm.allreduce(assemble_scalar(self.C_form), op=MPI.SUM)
 
         # Assemble direct derivative dCdrho
@@ -93,7 +126,7 @@ class Sensitivity():
         self.dAdjointTerm_vec.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
         self.dCdrho_vec.axpy(1.0, self.dAdjointTerm_vec)   # Add adjoint term to direct dirivative 
         
-        #Zero out Displacement
+        # Zero out Displacement
         U_value, self.dUdrho_vec = 0, None
         
         func_values = [C_value, V_value, U_value]
