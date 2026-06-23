@@ -1,60 +1,93 @@
 # top_optim
-**topoptim** is a research fork of [FEniTop](https://github.com/missionlab/fenitop), an open-source topology optimization program built on [FEniCSx](https://fenicsproject.org). This project extends the original framework of **FEniTop** to include non-linear models, including the St. Vernant and NeoHookean models. 
 
-The program consists of an input file which prescribes the FEM setup and optimization settings, and six different modules which perform the optimization routine including: 
-- **topopt.py** Runs the full optimization loop by calling on other modules and creates a results folder.
-- **fem.py** Utilizes FEniCSx to form an FEA problem, including defining the material interpolation, boundary conditions, weak form equations, and optimization related variables.
-- **parameterize.py** Defines **DensityFilter** class which applies a PDE-based Helmholtz filter to the raw density field, and **Heaviside** class which sharpens the filtered field via smooth projection.
-- **sensitivity.py** Computes the full derivative of compliance with respect to the design variable, density, via the adjoint method.    
-- **optimize.py** Employs the Optimality Criteria (OC) or Method of Moving Asymptotes (MMA) optimizers to update the design variables based off of the sensitivities.  
-- **utility.py** Provides auxiliary functions, including plotters, communicators, and classes to wrap and solve linear and non-linear problems.
+**top_optim** is a research fork of [FEniTop](https://github.com/missionlab/fenitop), an open-source topology optimization framework built on [FEniCSx](https://fenicsproject.org).
 
-# Implementation of Non-Linear Models
-The non-linear models were implemented into the **FEniTop** framework with only a few additions:
-- Update program to use new version of FEniCSx 0.9.0
-- Creation of **WrapNonlinearProblem** class to wrap a residual problem and solve iteratively.
-- Changed definition of compliance from internal strain energy to external work.
-- Implementation of incremental load stepping for nonlinear problems, where tractions are scaled progressively across a defined number of steps. At each step, the nonlinear problem is solved and updated via **WrapNonlinearProblem.solve_fem()**, improving stability and convergence under large deformations.
-- New sensitivity class which can be applied to both linear and nonlinear problems, utilizing automatic differentiation and an adjoint sensitivity solve via a transposed linear system to assemble the full derivative. 
+This version extends FEniTop for topology optimization of **hard-magnetic soft materials (hMSMs)**. The framework supports hyperelastic finite-element models, magneto-mechanical coupling, magnetic material distribution optimization, remanent magnetization-direction optimization, and model-comparison studies for different constitutive material models.
 
-# Optimization Response
-To analyze the behavior of nonlinear models against the linear elastic model, a comparison test is performed. Each model solves the same problem with identical input parameters and settings. Three different problems are setup, each with increasing tractions to highlight how these models change with load magnitude when all other variables are held constant.
+## Project Overview
 
-### Problem Setup
-The problem consists of a 2D beam, fixed on the left edge and a traction applied in the downward direction over a small length on the right side. 
-<img src="images/problem_setup.png">
+The main goal of this code is to optimize magnetic soft material designs by controlling:
 
-### Results
-<img src="images/topology_compare.png">
+- **ρ (rho)**: mechanical material density
+- **ϕ (phi)**: magnetic material fraction / magnetic density distribution
+- **θ (theta)**: remanent magnetization direction
 
-# How to run top_optim
+The current formulation supports different active design-variable choices. For example, a run may optimize only `phi` while keeping `rho = 1`, or may optimize combinations of `rho`, `phi`, and `theta`.
 
-### Installation and setup of top_optim
-To copy the repository and set it up, simply copy these commands into your terminal: 
-```
-git clone https://github.com/CEADpx/top_optim
-cd top_optim
-```
-Create and activate the environment:
+The code supports several objective types and is modular, so new objectives may easily be added. The code currently supports compliance minimization, maximized displacement, and displacement tracking objectives.   
 
-```
-conda env create -f environment.yml
-conda activate top_optim_env
-```
+## Motivation
 
-### Running an example
-To run an example, simply execute using: `python3 Linear_input.py`
+The behavior of hard-magnetic soft materials is highly dependent on the constitutive model used to describe the elastomer matrix. Different model assumptions can produce substantially different deformation predictions under identical magnetic loading conditions.
 
-Note: **fenitop** was created to run the code in parallel. Such features do not work in **top_optim** for simplicity.  
+This repository provides tools to:
 
-## Authors and Refrence
+- Evaluate constitutive-model sensitivity in hMSMs
+- Compare magnetic actuator performance across constitutive models
+- Investigate how deformation magnitude and magnetic-material placement influence model sensitivity
+- Perform simultaneous optimization of material density (ρ), magnetic material distribution (ϕ), and magnetization direction (θ)
 
-### Authors 
-- Ian Galloway (ian.galloway@mines.sdsmt.edu)
-- Prashant Jha (prashant.jha@sdsmt.edu)
+## Repository Structure
 
-### Citation for fenitop
-This project builds directly on the foundation provided by [FEniTop](https://github.com/missionlab/fenitop), which made it possible to develop and experiment with advanced topology optimization methods in FEniCSx. Huge thanks to the original authors for making their code public — top_optim would not exist without it.
-- Jia, Y., Wang, C. & Zhang, X.S. FEniTop: a simple FEniCSx implementation for 2D and 3D topology optimization supporting parallel computing. Struct Multidisc Optim 67, 140 (2024). https://doi.org/10.1007/s00158-024-03818-7
+The repository is organized into three main folders:
+
+### fenitop/
+
+Core topology optimization framework and finite-element implementation.
+
+Contains the modified FEniTop source code organized into seven primary modules:
+
+- **topopt.py**  
+  Runs the topology optimization loop, manages active design variables, applies filters, handles multi-load-case aggregation, calls sensitivities, updates the design with MMA, and writes output files.
+
+- **fem.py**  
+  Builds the finite-element problem in FEniCSx, including hyperelastic material models, magneto-mechanical energy terms, boundary conditions, load cases, objective forms, constraint forms, and derivative forms.
+
+- **sensitivity.py**  
+  Computes objective and constraint sensitivities using adjoint solves. Supports gradients with respect to `rho`, `phi`, and `theta`.
+
+- **parameterize.py**  
+  Provides the original FEniTop density filter and Heaviside projection tools.
+
+- **optimize.py**  
+  Provides the original FEniTop OC and MMA optimizers.
+
+- **utility.py**  
+  Provides plotting, communication, linear-problem utilities, and the added `WrapNonlinearProblem` class for nonlinear finite-element solves.
+
+- **evaluate.py**  
+  Evaluates a fixed design across different material models and exports displacement comparison data.
+
+### eval/
+
+Post-processing and model-comparison studies, calls upon **evaluate.py**.
+
+Contains scripts used to evaluate designs under different constitutive models, magnetic-field conditions, or loading scenarios. This can be used to quantify differences in response under varying constitutive models, or to just perform FEA on a custom design. Current examples compare responses across multiple strain-energy and shear-modulus constitutive models. These include: 
+
+- **beam_loadStep**
+  Cantilever beam with constant remanent magnetization evaluated across increasing applied magnetic loads.
+- **beam_tip**
+  Cantilever beam with only 20% of the tip containing remanent magnetization.
+- **gripper**
+  Custom-designed gripper with two arms that close when a magnetic load is applied.
+- **wheel** 
+  A spoked wheel that rotates counter-clockwise when a magnetic load is applied.
+
+Running a script in this folder does not perform optimization; it evaluates an existing design and saves performance metrics and displacement data.
+
+### opt/
+
+Optimization studies and example problems.
+
+Contains input files used to define optimization problems, including:
+
+- **input_scissor.py** 
+  Optimize ϕ and θ to maximize outward displacement to produce a push-type actuator
+- **input_wheel.py** 
+  Using the same geometry for the wheel experiment in eval/, optimize ϕ and θ to maximize counter-clockwise rotation. 
+- **input_combo.py**
+  Optimize ρ, ϕ, and θ on a cantilever beam with a downward traction applied and an upward applied magnetic field, with the objective of compliance minimization. 
+
+Running a script in this folder performs a topology optimization simulation and writes the optimized design to disk.
 
 
