@@ -1,0 +1,25 @@
+abstract: <p><strong>CEADpx/top_optim</strong> is an open-source research code for
+  nonlinear finite-element simulation and topology optimization of hard-magnetic soft
+  materials. It supports hyperelastic magneto-mechanical modeling, constitutive-model
+  comparison, and joint optimization of structural density, magnetic particle volume
+  fraction, and remanent magnetization direction. The repository includes benchmark
+  studies for model sensitivity and optimization examples for rotational, translational,
+  and restorative magnetic soft actuators.</p>
+authors:
+- affiliation: South Dakota School of Mines and Technology
+  family-names: Galloway
+  given-names: Ian
+  orcid: 0009-0002-6428-8624
+- affiliation: South Dakota School of Mines and Technology
+  family-names: Jha
+  given-names: Prashant K
+  orcid: 0000-0003-2158-364X
+cff-version: 1.2.0
+date-released: '2026-07-15'
+doi: 10.5281/zenodo.21266889
+license:
+- cc-by-4.0
+message: If you use this software, please cite it using the metadata from this file.
+title: CEADpx/top_optim - Joint material-structural optimization framework for field-responsive
+  soft materials
+type: software
