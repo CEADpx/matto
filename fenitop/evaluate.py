@@ -1,7 +1,7 @@
 """
 Authors:
 - Ian Galloway (ian.galloway@mines.sdsmt.edu)
-- Prashant Jha (prashant.jha@sdsmt.edu)
+- Prashant K. Jha (pjha.sci@gmail.com)
 
 Purpose:
 - Evaluate a fixed material design across multiple constitutive models

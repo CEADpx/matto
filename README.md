@@ -12,9 +12,33 @@ The design of an hMSM structure can be controlled through:
 - **ϕ (phi):** magnetic particle volume fraction
 - **θ (theta):** remanent magnetization direction
 
-Different combinations of these fields may be selected as active design variables. For example, a problem may optimize only `phi` while keeping `rho = 1`, or may jointly optimize `rho`, `phi`, and `theta`.
+Different combinations of these fields may be selected as active design variables. For example, a problem may optimize only `phi` while keeping `rho = 1`, optimize `phi` and `theta` in a prescribed structure, or jointly optimize `rho`, `phi`, and `theta`.
 
 The code currently supports compliance minimization, displacement maximization, and displacement-tracking objectives. Its modular structure also allows additional objectives, constraints, and constitutive models to be implemented.
+
+## Representative examples
+
+The optimization examples demonstrate both prescribed-structure magnetic design and full joint material--structural design.
+
+### Rotational actuator
+
+The wheel example optimizes `phi` and `theta` in a fixed wheel geometry to increase counterclockwise rotation under an applied magnetic field.
+
+![Rotational actuator optimization](docs/assets/wheel_opt.png)
+
+### Translational actuator
+
+The scissor-like actuator example optimizes `phi` and `theta` in a fixed structure to produce targeted horizontal motion while suppressing undesired vertical displacement.
+
+![Translational actuator optimization](docs/assets/scissor_opt.png)
+
+### Restorative beam
+
+The restorative beam example jointly optimizes `rho`, `phi`, and `theta` under two opposing load cases. The goal is to obtain a structure that resists mechanical loading while using magnetic actuation to restore toward its undeformed configuration.
+
+![Restorative beam setup](docs/assets/BeamOptSetup.png)
+
+![Restorative beam optimized design](docs/assets/beam_opt.png)
 
 ## Motivation
 
