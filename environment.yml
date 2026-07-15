@@ -1,27 +1,18 @@
-# This file may be used to create an environment using:
-# $ conda env create -f final_environment.yml
-# platform: linux-64
-# created-by: conda 25.5.1
-name: top_optim_env
+name: confenx
+
 channels:
   - conda-forge
-  - defaults
+
 dependencies:
-  - python=3.11  # or match your system Python version
+  - python=3.13
   - fenics-dolfinx=0.9.0
-  - fenics-ffcx
-  - fenics-ufl
-  - petsc4py
-  - slepc4py
-  - mpi4py
   - mpich
-  - numpy
   - scipy
   - matplotlib
-  - jupyter
-  - ipykernel
   - pip
+
   - pip:
-      - pyvista
-      - meshio
-      - gmsh
+      - gmsh==4.13.1
+      - meshio==5.3.5
+      - pygmsh==7.1.17
+      - pyvista==0.45.2

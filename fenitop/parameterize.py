@@ -1,3 +1,20 @@
+"""
+Authors:
+- Yingqi Jia (yingqij2@illinois.edu)
+- Chao Wang (chaow4@illinois.edu)
+- Xiaojia Shelly Zhang (zhangxs@illinois.edu)
+
+Reference:
+- Jia, Y., Wang, C. & Zhang, X.S. FEniTop: a simple FEniCSx implementation
+  for 2D and 3D topology optimization supporting parallel computing.
+  Struct Multidisc Optim 67, 140 (2024).
+  https://doi.org/10.1007/s00158-024-03818-7
+
+This file remains unmodified from the original FEniTop implementation.
+"""
+
+# This file remains unmodified from the original FEniTop implementation
+
 import numpy as np
 import ufl
 from dolfinx import la

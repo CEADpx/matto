@@ -1,3 +1,23 @@
+"""
+Authors:
+- Yingqi Jia (yingqij2@illinois.edu)
+- Chao Wang (chaow4@illinois.edu)
+- Xiaojia Shelly Zhang (zhangxs@illinois.edu)
+
+Reference:
+- Jia, Y., Wang, C. & Zhang, X.S. FEniTop: a simple FEniCSx implementation
+  for 2D and 3D topology optimization supporting parallel computing.
+  Struct Multidisc Optim 67, 140 (2024).
+  https://doi.org/10.1007/s00158-024-03818-7
+
+Major modifications:
+- Ian Galloway (ian.galloway@mines.sdsmt.edu)
+- Prashant Jha (prashant.jha@sdsmt.edu)
+
+Major additions to utility.py:
+- WrapNonlinearProblem for nonlinear hyperelastic FEM solves
+"""
+
 from dolfinx.fem.petsc import NonlinearProblem as DolfinxNonlinearProblem
 from dolfinx.nls.petsc import NewtonSolver
 import numpy as np
@@ -18,6 +38,7 @@ class WrapNonlinearProblem:
         self.u = u  
         self.problem = DolfinxNonlinearProblem(R, u, bcs) 
         self.solver = NewtonSolver(u.function_space.mesh.comm, self.problem)  #solve R(u)=0 iteratively
+       
         self.solver.line_search = "bt"
         self.bcs = bcs
 
@@ -25,12 +46,6 @@ class WrapNonlinearProblem:
         self.solver.atol = 1e-4 # absolute residual norm
         self.solver.rtol = 1e-4  # relative residual norm
         self.solver.convergence_criterion = "incremental"
-
-        # Optional PETSc settings from dictionary
-        for k, v in petsc_options.items():
-            from petsc4py import PETSc
-            PETSc.Options().setValue(k, v) 
-        self.solver.krylov_solver.setFromOptions()  
 
     def solve_fem(self):
         """
