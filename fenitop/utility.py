@@ -12,7 +12,7 @@ Reference:
 
 Major modifications:
 - Ian Galloway (ian.galloway@mines.sdsmt.edu)
-- Prashant Jha (prashant.jha@sdsmt.edu)
+- Prashant K. Jha (pjha.sci@gmail.com)
 
 Major additions to utility.py:
 - WrapNonlinearProblem for nonlinear hyperelastic FEM solves

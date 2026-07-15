@@ -12,7 +12,7 @@ Reference:
 
 Major modifications:
 - Ian Galloway (ian.galloway@mines.sdsmt.edu)
-- Prashant Jha (prashant.jha@sdsmt.edu)
+- Prashant K. Jha (pjha.sci@gmail.com)
 
 Major additions to sensitivity.py:
 - Adjoint sensitivities for phi and theta design variables
