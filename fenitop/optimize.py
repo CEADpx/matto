@@ -10,33 +10,13 @@ Reference:
   Struct Multidisc Optim 67, 140 (2024).
   https://doi.org/10.1007/s00158-024-03818-7
 
-This file remains unmodified from the original FEniTop implementation.
+  This file contains the MMA implementation used by the optimization framework.
 """
-
-# This file remains unmodified from the original FEniTop implementation
 
 import numpy as np
 from mpi4py import MPI
 from scipy import sparse as sparse
 from scipy.linalg import solve
-
-
-def optimality_criteria(rho, rho_min, rho_max, V, dCdrho, dVdrho, move=0.05):
-    """Solution update scheme with optimality criteria (OC)."""
-    lb, ub = 0.0, 1e6
-    comm = MPI.COMM_WORLD
-    while ub-lb > 1e-4:
-        mid = (lb+ub) / 2.0
-        rho_new = np.maximum.reduce([np.minimum.reduce(
-            [rho*(-dCdrho/(dVdrho+1e-12)/mid)**0.5, rho+move, rho_max]), rho-move, rho_min])
-        dV = comm.allreduce(dVdrho@(rho_new-rho), op=MPI.SUM)
-        if V + dV > 0:
-            lb = mid
-        else:
-            ub = mid
-    change = comm.allreduce(np.max(np.abs(rho_new-rho), initial=0), op=MPI.MAX)
-    return rho_new, change
-
 
 def mma_optimizer(m, n, opt_iter, xval, xmin, xmax, xold1, xold2, df0dx, fval,
                   dfdx, low, upp, a0=1, a=None, c=None, d=None, move=0.05,
@@ -115,7 +95,7 @@ def mma_optimizer(m, n, opt_iter, xval, xmin, xmax, xold1, xold2, df0dx, fval,
     alpha = np.maximum.reduce([xmin, low+albefa*(xval-low), xval-move*xrange])
     beta = np.minimum.reduce([xmax, upp-albefa*(upp-xval), xval+move*xrange])
 
-    # Evaluate the coefficients of the approximating objective fuction (p0 and q0)
+    # Evaluate the coefficients of the approximating objective function (p0 and q0)
     idx = df0dx > 0
     p0, q0 = np.zeros(n), np.zeros(n)
     p0[idx], p0[~idx] = 1.001*df0dx[idx], -0.001*df0dx[~idx]
@@ -123,7 +103,7 @@ def mma_optimizer(m, n, opt_iter, xval, xmin, xmax, xold1, xold2, df0dx, fval,
     ul1 = upp - low
     p0, q0 = (p0+feps/ul1)*(upp-xval)**2, (q0+feps/ul1)*(xval-low)**2
 
-    # Evaluate the coefficients of the approximating constraint fuctions (P_mat and Q_mat)
+    # Evaluate the coefficients of the approximating constraint functions (P_mat and Q_mat)
     P_mat, Q_mat = np.zeros((m, n)), np.zeros((m, n))
     dfdx = dfdx.reshape(m, n)
     idx = dfdx > 0

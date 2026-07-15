@@ -4,9 +4,9 @@ Authors:
 - Prashant Jha (prashant.jha@sdsmt.edu)
 
 Purpose:
-- Evaluate a fixed magnetic topology across multiple constitutive models
-- Compare displacement and compliance metrics without re-optimization
-- Export BP and CSV results for post-processing and model comparison
+- Evaluate a fixed material design across multiple constitutive models
+- Solve one or more prescribed load cases without re-optimization
+- Export displacement, compliance, and field data for model comparison
 """
 
 import os
@@ -27,6 +27,14 @@ def _safe_unit(v):
     if n > 0:
         return v / n
     return np.zeros_like(v)
+
+def _require_serial(comm):
+    """Require serial execution because design arrays and metrics use local DOF layouts."""
+    if comm.size != 1:
+        raise RuntimeError(
+            "evaluate() currently supports serial execution only. "
+            "Run the evaluation with mpirun -n 1."
+        )
 
 def _load_npy_or_raise(path: str, label: str) -> np.ndarray:
     if path is None:
@@ -104,18 +112,11 @@ def _get_design_arrays(mesh, design_source: dict):
 
 
 def _build_minimal_opt(design_variables: dict) -> dict:
-    """
-    Minimal opt dict required by fem.py / form_fem.
-    """
+    """Build the optimization entries required by form_fem during evaluation."""
     return {
-        # required for rho penalization and some constraint weights
         "penalty": 3.0,
         "epsilon": 1e-6,
-
-        # toggles consumed by fem.py
         "design_variables": design_variables,
-
-        # objective can be anything; we are not optimizing
         "objective_type": "compliance",
         "objective_bcs": [],
     }
@@ -136,7 +137,6 @@ def _solve_load_case_with_load_stepping(
       - ramp B_app from 0 → target
       - ramp tractions from 0 → target
     """
-    comm = fem_params_local["mesh"].comm
     N_steps = int(fem_params_local.get("load_steps", 1))
     if N_steps < 1:
         N_steps = 1
@@ -190,7 +190,7 @@ def _build_bp_fields(mesh,
     if write_theta and theta_phys_field is not None:
         fields.append(theta_phys_field)
 
-        # m_eff field (debug-friendly)
+        # Effective magnetic material-direction field for visualization
         dim = mesh.geometry.dim
         V_vec_cg = fem.functionspace(
             mesh,
@@ -258,7 +258,6 @@ def evaluate(fem_params: dict,
           "csv_name": str (default "model_comparison.csv")
           "measurement_marker": callable, optional
           "compute_compliance": bool (default False)
-          "allow_parallel_npy": bool (default False)
       - design_source:
           type="files": {rho, phi, theta paths or None}
           type="callable": {builder(mesh)->(rho,phi,theta)}
@@ -279,7 +278,7 @@ def evaluate(fem_params: dict,
     mesh = fem_params["mesh"]
     comm = mesh.comm
 
-    _ensure_serial_or_raise(comm, eval_config)
+    _require_serial(comm)
 
     if comm.rank == 0:
         os.makedirs(output_dir, exist_ok=True)
@@ -336,10 +335,10 @@ def evaluate(fem_params: dict,
             (
                 femProblem,
                 u_field,
-                lambda_field,
-                rho_field,
+                _lambda_field,
+                _rho_field,
                 rho_phys_field,
-                phi_field,
+                _phi_field,
                 phi_phys_field,
                 phi_eff_field,
                 theta_phys_field,

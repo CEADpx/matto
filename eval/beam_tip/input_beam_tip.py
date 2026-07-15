@@ -1,7 +1,6 @@
 import os
 import sys
 
-# Add project root (FinalTop) to python path so fenitop can be imported
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
@@ -14,7 +13,6 @@ from dolfinx import fem
 # Import evaluation driver
 from fenitop.evaluate import evaluate
 
-
 # ============================================================
 #  BEAM GEOMETRY PARAMETERS
 # ============================================================
@@ -25,7 +23,6 @@ beam = {
     "lc": 0.08,
     "phi_cap": 0.30,
 }
-
 
 # ============================================================
 #  BUILD RECTANGULAR CANTILEVER BEAM MESH
@@ -75,24 +72,12 @@ def build_beam_mesh(L=1.0, H=0.2, lc=0.01, comm=MPI.COMM_WORLD):
 
     return mesh
 
-
 mesh = build_beam_mesh(
     L=beam["L"],
     H=beam["H"],
     lc=beam["lc"],
     comm=MPI.COMM_WORLD
 )
-
-if MPI.COMM_WORLD.rank == 0:
-    mesh_serial = build_beam_mesh(
-        L=beam["L"],
-        H=beam["H"],
-        lc=beam["lc"],
-        comm=MPI.COMM_SELF
-    )
-else:
-    mesh_serial = None
-
 
 # ============================================================
 #  FEM PARAMETERS
@@ -101,14 +86,8 @@ else:
 fem_params = {
 
     "mesh": mesh,
-    "mesh_serial": mesh_serial,
 
-    "shear_modulus": 100.0,
-    "poisson's ratio": 0.49,
-
-    "hyperelastic": True,
-    "hyperModel": "stVenant",
-    "G_model": "default",
+    "shear_modulus": 100.0, # kPa
 
     # Clamp left edge of cantilever beam
     "disp_bc": lambda x: np.isclose(x[0], 0.0),
@@ -117,46 +96,20 @@ fem_params = {
     "traction_bcs": [],
 
     "load_cases": [
-                {
-            "name": "B_micro",
-            "weight": 1.0,
-            "B_app_mag": 25.0,
-            "B_app_dir": (0.0, 1.0),
-            "tractions": {},
-        },
         {
-            "name": "B_small",
-            "weight": 1.0,
-            "B_app_mag": 100.0,
-            "B_app_dir": (0.0, 1.0),
-            "tractions": {},
-        },
-        {
-            "name": "B_medium",
-            "weight": 1.0,
-            "B_app_mag": 200.0,
-            "B_app_dir": (0.0, 1.0),
-            "tractions": {},
-        },
-        {
-            "name": "B_large",
-            "weight": 1.0,
-            "B_app_mag": 400.0,
+            "name": "B_up",
+            "B_app_mag": 400.0, # (mT)
             "B_app_dir": (0.0, 1.0),
             "tractions": {},
         },
     ],
 
-    "load_steps": 100,
+    "load_steps": 50,
 
     "quadrature_degree": 2,
 
-    "mu0": 1.256e3,
-    "B_rem_mag": 100.0,
-    "B_rem_dir": (1.0, 0.0),
-
-    "B_app_mag": 100.0,
-    "B_app_dir": (0.0, 1.0),
+    "mu0": 1.256e3, # vacuum permeability (mT^2/kPa)
+    "B_rem_mag": 100.0, # (mT)
 
     "petsc_options": {
         "ksp_type": "cg",
@@ -176,16 +129,14 @@ RESULTS_DIR = os.path.join(BASE_DIR, "results")
 
 eval_config = {
 
-    "G_models": ["default", "guth", "mooney", "kerner"],
-    #"G_models": ["default"],
+    "G_models": ["default", "guth", "mooney", "hill", "kerner", "LP", "LPA"],
     "hyperelastic_models": ["stVenant", "neoHookean1", "neoHookean2"],
-    #"hyperelastic_models": ["stVenant"],
 
     "output_dir": RESULTS_DIR,
 
     "write_bp": True,
     "write_csv": True,
-    "csv_name": "beam_load_sweep_model_comparison.csv",
+    "csv_name": "beam_tip_model_comparison.csv",
     "measurement_marker": lambda x: np.isclose(x[0], beam["L"]),
 
     "compute_compliance": False,
@@ -206,8 +157,12 @@ def build_beam_design(mesh):
     # Standard density stays solid everywhere
     rho = np.ones(ndofs)
 
-    # Uniform magnetic material density
-    phi = beam["phi_cap"] * np.ones(ndofs)
+    # Magnetic material only near the free tip
+    tip_start = 0.80 * beam["L"]
+    tip_region = coords[:, 0] >= tip_start
+
+    phi = np.zeros(ndofs)
+    phi[tip_region] = beam["phi_cap"]
 
     # Remanent magnetization points along the beam, +x direction
     theta = np.zeros(ndofs)

@@ -18,9 +18,7 @@ geom = {
     "lc": 0.08,
 
     "L": 10.0,
-    "H": 14.0,
 
-    "clamp_width": 0.50,
     "plate_width": 0.05,
 
     "arm_width": 0.45,
@@ -131,7 +129,7 @@ def build_closed_push_mesh(lc=0.08, comm=MPI.COMM_WORLD):
 
         gmsh.model.mesh.generate(2)
 
-    mesh, cell_tags, facet_tags = model_to_mesh(
+    mesh, _, _ = model_to_mesh(
         gmsh.model,
         comm,
         0,
@@ -151,36 +149,24 @@ if MPI.COMM_WORLD.rank == 0:
 else:
     mesh_serial = None
 
-
 # ============================================================
 #  GEOMETRIC MARKERS
 # ============================================================
 
 L = geom["L"]
-H = geom["H"]
 plate_width = geom["plate_width"]
-clamp_width = geom["clamp_width"]
-arm_width = geom["arm_width"]
 
 plate_x0 = L - plate_width
 y_mid = geom["y_mid"]
 
-
 def left_clamp(x):
     return np.isclose(x[0], 0.0)
-
-
-def right_output_edge(x):
-    return np.isclose(x[0], L)
-
 
 def false_zone(x):
     return np.full(x.shape[1], False)
 
-
 def phi_void_output_plate(x):
     return x[0] >= plate_x0
-
 
 # ============================================================
 #  FEM PARAMETERS
@@ -190,11 +176,12 @@ fem_params = {
     "mesh": mesh,
     "mesh_serial": mesh_serial,
 
-    "shear_modulus": 100.0,
-    "poisson's ratio": 0.49,
+    "shear_modulus": 100.0, # kPa
 
-    "hyperelastic": True,
-    "hyperModel": "neoHookean1",
+    "hyperModel": "neoHookean2", # Options: "neoHookean1", "neoHookean2" ,"stVenant"
+
+    # --- Shear modulus microstructure model ---
+    # Options: "default", "guth", "mooney", "kerner", "LP", "LPA", "hill"
     "G_model": "mooney",
 
     # Clamp left side of the left block
@@ -203,25 +190,11 @@ fem_params = {
     "body_force": (0.0, 0.0),
     "quadrature_degree": 2,
 
-    "mu0": 1.256e3,
-    "B_rem_mag": 100.0,
-    "B_rem_dir": (1.0, 0.0),
-
-    # theta starts neutral-ish; optimizer can change it
+    "mu0": 1.256e3, # vacuum permeability (mT^2/kPa)
+    "B_rem_mag": 100.0, # mT
     "theta_init_dir": (1.0, 0.0),
 
-    # overwritten by load case
-    "B_app_mag": 0.0,
-    "B_app_dir": (1.0, 0.0),
-
-    # Dummy traction marker so the load-case structure stays compatible
-    "traction_bcs": [
-        {
-            "name": "dummy_right",
-            "traction_max": (0.0, 0.0),
-            "on_boundary": right_output_edge,
-        },
-    ],
+    "traction_bcs": [],
 
     "load_cases": [
         {
@@ -229,9 +202,7 @@ fem_params = {
             "weight": 1.0,
             "B_app_mag": 125.0,
             "B_app_dir": (1.0, 0.0),
-            "tractions": {
-                "dummy_right": (0.0, 0.0),
-            },
+            "tractions": {},
         },
     ],
 
@@ -254,56 +225,23 @@ opt = {
     "max_iter": 100,
     "opt_tol": 1e-5,
 
-    # Rho is inactive, but keep this harmless/default.
     "vol_frac_rho": 1.0,
 
-    # Phi is the actual magnetic density design variable.
     "vol_frac_phi": 0.15,
     "phi_cap": geom["phi_cap"],
 
     "solid_zone": false_zone,
     "void_zone": false_zone,
 
-    "rho_solid_zone": false_zone,
-    "rho_void_zone": false_zone,
-
-    # Keep magnetic material out of the output plate.
-    # This makes the arms the magnetic design region.
-    "phi_solid_zone": false_zone,
     "phi_void_zone": phi_void_output_plate,
 
     "penalty": 3.0,
     "epsilon": 1e-6,
 
     "filter_radius": 0.20,
-    "beta_interval": 100,
-    "beta_max": 4.0,
 
-    "use_oc": False,
     "move": 0.01,
 
-    "stress_constraint": False,
-    "stress_pnorm": 12,
-    "sigma_max": 1.0,
-
-    "strain_constraint": False,
-    "U_max": 1.0,
-    "strain_ramp": {
-        "enabled": False,
-        "U_start": 1.0,
-        "U_end": 1.0,
-        "start_iter": 1,
-        "end_iter": 100,
-        "schedule": "linear",
-    },
-
-    "compliance_constraint": False,
-    "compliance_ref": 1.0,
-    "compliance_gamma": 1.0,
-
-    "disp_constraint": False,
-
-    # Same style as input_push.py: track rightward output motion.
     "objective_type": "disp_track",
 
     "disp_track": [
@@ -316,17 +254,13 @@ opt = {
         },
     ],
 
-    "objective_bcs": [],
-
-    "enforce_volume_equality": False,
-
     "output_dir": str(
         Path(__file__).resolve().parent
         / "results_ClosedPush_PhiTheta_RhoFixed"
     ),
 
-    "sim_output_interval": 1,
-    "sim_image_output_interval": 5,
+    "sim_output_interval": 25,
+    "sim_image_output_interval": 101,
 }
 
 

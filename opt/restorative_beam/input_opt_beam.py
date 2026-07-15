@@ -5,7 +5,6 @@ import numpy as np
 from mpi4py import MPI
 from dolfinx.mesh import create_rectangle, CellType
 
-# Add FinalTop/ to Python's import path so this script can find fenitop/
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -14,8 +13,6 @@ from fenitop.topopt import topopt
 # ============================================================
 #  MESH
 # ============================================================
-
-# Simple 2D cantilever: 100 × 30 rectangle (thicker beam)
 
 # Simple 2D cantilever: 100 × 20 rectangle
 mesh = create_rectangle(
@@ -35,7 +32,6 @@ if MPI.COMM_WORLD.rank == 0:
 else:
     mesh_serial = None
 
-
 # ============================================================
 #  FEM PARAMETERS
 # ============================================================
@@ -45,13 +41,11 @@ fem_params = {
     "mesh_serial": mesh_serial,
 
     # --- Mechanical model ---
-    "shear_modulus": 100.0,      # base shear modulus G0
-    "poisson's ratio": 0.49,      # only used for Kerner model if selected
-    "hyperelastic": True,
-    "hyperModel": "neoHookean1", # neoHookean2 ,stVenant
+    "shear_modulus": 100.0,      # kPa  
+    "hyperModel": "neoHookean2", # Options: "neoHookean1", "neoHookean2" ,"stVenant"
 
     # --- Shear modulus microstructure model ---
-    # options: "default", "guth", "mooney", "kerner"
+    # Options: "default", "guth", "mooney", "kerner", "LP", "LPA", "hill"
     "G_model": "mooney",
 
     # --- Boundary conditions ---
@@ -66,14 +60,11 @@ fem_params = {
     # ============================================================
     #  MAGNETIC PARAMETERS
     # ============================================================
-    "mu0": 1.256e3,                 # magnetic permeability
-    "B_rem_mag": 200.0,            # remanent field magnitude
-    "B_rem_dir": (1.0, 0.0),        # direction of remanent field (x-direction)
-    "B_app_mag": 00.0,
-    "B_app_dir": (0.0, 1.0),
+    "mu0": 1.256e3, # vacuum permeability (mT^2/kPa)
+    "B_rem_mag": 200.0, # (mT) 
+    "theta_init_dir": (1.0, 0.0), 
 
-
-    # Mechanical traction applied on right edge downward
+    # Traction boundary definitions
     "traction_bcs": [
         {
             "name": "out_right",
@@ -82,15 +73,23 @@ fem_params = {
         },
     ],
 
-
     "load_cases": [
         {
-            "name": "traction_down_B_up_MooneyN1",
+            "name": "traction_down_B_up",
             "weight": 1.0,
-            "B_app_mag": 25.0,
+            "B_app_mag": 25.0, # mT
             "B_app_dir": (0.0, 1.0),
             "tractions": {
-                "out_right": (0.0, -0.50),   # stronger downward traction
+                "out_right": (0.0, -0.50), # mN/mm^2
+            }, 
+        },
+        {
+            "name": "traction_up_B_down",
+            "weight": 1.0,
+            "B_app_mag": 25.0, # mT
+            "B_app_dir": (0.0, -1.0),
+            "tractions": {
+                "out_right": (0.0, 0.50), # mN/mm^2
             },
         },
     ],
@@ -131,57 +130,20 @@ opt = {
     "epsilon": 1e-6,
 
     # FILTERING
-    "filter_radius": 1.5,
+    "filter_radius": 1.0,
     "beta_interval": 25,
     "beta_max": 4.0,
 
     # Optimizer
-    "use_oc": False,
-    "move": 0.005,   # original 0.02
-
-    # Stress constraint
-    "stress_constraint": False,
-    "stress_pnorm": 12,
-    "sigma_max": 0.15,   
-
-    # Strain-energy constraint
-    "strain_constraint": False,
-
-    # Base (fallback if ramping disabled)
-    "U_max": 0.15,
-
-    # Strain constraint ramping
-    "strain_ramp": {
-        "enabled": False,        # master toggle
-        "U_start": 0.35,         # initial U_max
-        "U_end": 0.15,           # final U_max (hard cap)
-        "start_iter": 1,        # iteration to start ramping
-        "end_iter": 100,         # iteration to finish ramping
-        "schedule": "linear",   # "linear" or "exp"
-    },
-
-
-    # ------------------------------------------------------------
-    # OBJECTIVE REGULARIZATION (NOT A CONSTRAINT)
-    # ------------------------------------------------------------
-
-    # Compliance constraint 
-    "compliance_constraint": False,
-    "compliance_ref": 0.7,  # start 0.255
-    "compliance_gamma": 1.0,  
-
-    # Reference compliance for OBJECTIVE scaling ONLY
-    # Use iteration-1 compliance (~3.4e-03 from your logs)
-    "compliance_ref": 3.4e-03,
+    "move": 0.005,  
 
     # Objective
-    "objective_type": "compliance", # compliance, min_boundary_disp_norm, min_disp_norm, max_disp, disp_track
-    "enforce_volume_equality": False,
+    "objective_type": "compliance", 
 
     # Output
-    "output_dir": str(Path(__file__).resolve().parent / "results_Cantilever_TractionDown_Bup_MooneyN1"),
-    "sim_output_interval": 10,
-    "sim_image_output_interval": 25,
+    "output_dir": str(Path(__file__).resolve().parent / "results_Cantilever_TractionDown_Bup_MooneyN2"),
+    "sim_output_interval": 25,
+    "sim_image_output_interval": 101, 
 }
 
 # ============================================================
@@ -202,7 +164,6 @@ design_variables = {
         "type": "angle",     
     },
 }
-
 
 # ============================================================
 #  RUN

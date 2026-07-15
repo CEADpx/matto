@@ -1,7 +1,6 @@
 import os
 import sys
 
-# Add project root (FinalTop) to python path so fenitop can be imported
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
@@ -14,7 +13,6 @@ from dolfinx import fem
 # Import evaluation driver
 from fenitop.evaluate import evaluate
 
-
 # ============================================================
 #  WHEEL GEOMETRY PARAMETERS
 # ============================================================
@@ -25,7 +23,6 @@ wheel = {
 
     "r_inner": 9.0,
     "t": 0.5,
-    "r_hub": None,
 
     "phi_cap": 0.30,
 }
@@ -35,9 +32,6 @@ if wheel["r_inner"] is None:
 
 if wheel["t"] is None:
     wheel["t"] = 0.025 * wheel["R"]
-
-if wheel["r_hub"] is None:
-    wheel["r_hub"] = wheel["t"]
 
 
 # ============================================================
@@ -115,14 +109,7 @@ def build_wheel_spokes_mesh(R=1.0, lc=0.05, comm=MPI.COMM_WORLD):
 
     return mesh
 
-
 mesh = build_wheel_spokes_mesh(R=wheel["R"], lc=wheel["lc"], comm=MPI.COMM_WORLD)
-
-if MPI.COMM_WORLD.rank == 0:
-    mesh_serial = build_wheel_spokes_mesh(R=wheel["R"], lc=wheel["lc"], comm=MPI.COMM_SELF)
-else:
-    mesh_serial = None
-
 
 # ============================================================
 #  FEM PARAMETERS
@@ -131,14 +118,8 @@ else:
 fem_params = {
 
     "mesh": mesh,
-    "mesh_serial": mesh_serial,
 
-    "shear_modulus": 100.0,
-    "poisson's ratio": 0.49,
-
-    "hyperelastic": True,
-    "hyperModel": "stVenant",
-    "G_model": "default",
+    "shear_modulus": 100.0, # (kPa)
 
     # Clamp hub boundary (square void edges)
     "disp_bc": lambda x: (
@@ -173,8 +154,7 @@ fem_params = {
     "load_cases": [
         {
             "name": "B_up",
-            "weight": 1.0,
-            "B_app_mag": 125.0,
+            "B_app_mag": 125.0, # (mT)
             "B_app_dir": (0.0, 1.0),
             "tractions": {},
         },
@@ -184,12 +164,8 @@ fem_params = {
 
     "quadrature_degree": 2,
 
-    "mu0": 1.256e3,
-    "B_rem_mag": 100.0,
-    "B_rem_dir": (1.0, 0.0),
-
-    "B_app_mag": 100.0, #overwritten
-    "B_app_dir": (0.0, 1.0),
+    "mu0": 1.256e3, # vacuum permeability (mT^2/kPa)
+    "B_rem_mag": 100.0, # (mT)
 
     "petsc_options": {
         "ksp_type": "cg",
@@ -228,10 +204,8 @@ def right_rim_marker(x):
 
 eval_config = {
 
-    "G_models": ["default", "guth", "mooney", "kerner"],
-    #"G_models": ["kerner"],
+    "G_models": ["default", "guth", "mooney", "hill", "kerner", "LP", "LPA"],
     "hyperelastic_models": ["stVenant", "neoHookean1", "neoHookean2"],
-    #"hyperelastic_models": ["stVenant"],
 
     "output_dir": RESULTS_DIR,
 
@@ -254,27 +228,16 @@ def build_wheel_design(mesh):
 
     coords = V.tabulate_dof_coordinates()
 
-    x = coords[:, 0]
-    y = coords[:, 1]
-
-    r = np.sqrt(x**2 + y**2)
-
-    R = wheel["R"]
-    r_inner = wheel["r_inner"]
-
     ndofs = coords.shape[0]
 
+    # Standard density remains solid throughout the wheel
     rho = np.ones(ndofs)
 
-    #phi = np.zeros(ndofs)
-    #phi[(r > r_inner) & (r <= R)] = wheel["phi_cap"]
+    # Uniform magnetic particle volume fraction
     phi = wheel["phi_cap"] * np.ones(ndofs)
 
-    # RADIAL MAGNETIZATION
-    #theta = np.arctan2(y, x)
-    # CONSTANT UPWARD MAGNETIZATION
-    #theta = (np.pi / 2.0) * np.ones_like(x)
-    theta = np.zeros_like(x)
+    # Uniform remanent magnetization in the +x direction
+    theta = np.zeros(ndofs)
 
     return rho, phi, theta
 

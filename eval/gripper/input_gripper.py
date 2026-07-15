@@ -1,7 +1,6 @@
 import os
 import sys
 
-# Add project root (FinalTop) to python path so fenitop can be imported
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
@@ -217,12 +216,6 @@ def build_gripper_mesh(lc=0.05, comm=MPI.COMM_WORLD):
 
 mesh = build_gripper_mesh(lc=gripper["lc"], comm=MPI.COMM_WORLD)
 
-if MPI.COMM_WORLD.rank == 0:
-    mesh_serial = build_gripper_mesh(lc=gripper["lc"], comm=MPI.COMM_SELF)
-else:
-    mesh_serial = None
-
-
 # ============================================================
 #  FEM PARAMETERS
 # ============================================================
@@ -230,14 +223,8 @@ else:
 fem_params = {
 
     "mesh": mesh,
-    "mesh_serial": mesh_serial,
 
-    "shear_modulus": 100.0,
-    "poisson's ratio": 0.49,
-
-    "hyperelastic": True,
-    "hyperModel": "stVenant",
-    "G_model": "default",
+    "shear_modulus": 100.0, # (kPa)
 
     # Clamp entire base (y = 0)
     "disp_bc": lambda x: np.isclose(x[1], 0.0),
@@ -248,8 +235,7 @@ fem_params = {
     "load_cases": [
         {
             "name": "B_up",
-            "weight": 1.0,
-            "B_app_mag": 80.0,
+            "B_app_mag": 80.0, # (mT)
             "B_app_dir": (0.0, 1.0),
             "tractions": {},
         },
@@ -259,12 +245,8 @@ fem_params = {
 
     "quadrature_degree": 2,
 
-    "mu0": 1.256e3,
-    "B_rem_mag": 40.0,
-    "B_rem_dir": (1.0, 0.0),
-
-    "B_app_mag": 80.0,
-    "B_app_dir": (0.0, 1.0),
+    "mu0": 1.256e3, # vacuum permeability (mT^2/kPa)
+    "B_rem_mag": 40.0, # (mT)
 
     "petsc_options": {
         "ksp_type": "cg",
@@ -315,10 +297,8 @@ def right_tip_marker(x):
 
 eval_config = {
 
-    "G_models": ["default", "guth", "mooney", "kerner"],
-    #"G_models": ["default"],
+    "G_models": ["default", "guth", "mooney", "hill", "kerner", "LP", "LPA"],
     "hyperelastic_models": ["stVenant", "neoHookean1", "neoHookean2"],
-    #"hyperelastic_models": ["stVenant"],
 
     "output_dir": RESULTS_DIR,
 

@@ -20,33 +20,24 @@ Major additions to fem.py:
 - Magnetic material fraction design variable (phi)
 - Remanence-direction design variable (theta)
 - Multi-load-case magnetic and traction loading support
-- Additional objective and constraint formulations
+- Compliance, displacement-tracking, and rotational objectives
 """
 
-import os
 import numpy as np
-import time
 import ufl
-from mpi4py import MPI
 from petsc4py import PETSc
-from scipy.spatial import cKDTree
-from scipy import sparse
-from scipy.linalg import solve
-import dolfinx.io
-from dolfinx import fem, mesh
-from dolfinx.mesh import create_box, CellType, locate_entities_boundary, meshtags, create_rectangle
-from dolfinx.fem import (Function, Constant, dirichletbc, locate_dofs_topological, 
-                        form, assemble_scalar, functionspace)
-from dolfinx import la
-from dolfinx.fem.petsc import (create_vector, create_matrix, assemble_vector, assemble_matrix, set_bc)
-import pyvista
-pyvista.set_jupyter_backend('html')
-import basix
-from basix.ufl import element
-from ufl import variable, inner, grad, det, tr, Identity, outer, dev, sym
 
-from fenitop.utility import create_mechanism_vectors
-from fenitop.utility import LinearProblem
+import basix
+from dolfinx import fem
+from dolfinx.fem import (
+    Constant,
+    Function,
+    dirichletbc,
+    locate_dofs_topological,
+)
+from dolfinx.mesh import locate_entities_boundary, meshtags
+from ufl import grad, inner
+
 from fenitop.utility import WrapNonlinearProblem
 
 def form_fem(fem_params, opt):
@@ -105,54 +96,17 @@ def form_fem(fem_params, opt):
             mode=PETSc.ScatterMode.FORWARD
         )
 
-    # ============================================================
-    # Remanence Angle Initialization
-    # ============================================================
     theta_active = dv_cfg.get("theta", {}).get("active", False)
-
-    if not theta_active:
-        # theta inactive → fixed direction from B_rem_dir
-        _B_dir = np.array(fem_params.get("B_rem_dir", (1.0, 0.0)), dtype=np.float64)
-    else:
-        # Initial direction for theta (used as starting guess only)
-        _B_dir = np.array(
-            fem_params.get("theta_init_dir", (1.0, 0.0)),
-            dtype=np.float64
-        )
-
-    _n = np.linalg.norm(_B_dir)
-    if _n > 0:
-        _B_dir /= _n
-
-    theta0 = float(np.arctan2(_B_dir[1], _B_dir[0]))
-
-    with theta_phys_field.x.petsc_vec.localForm() as loc:
-        loc.set(theta0)
-    theta_phys_field.x.petsc_vec.ghostUpdate(
-        addv=PETSc.InsertMode.INSERT,
-        mode=PETSc.ScatterMode.FORWARD
-    )
  
     # ============================================================
     # Material Interpolation
     # ============================================================
-    G0 = fem_params["shear_modulus"]
-    nu = fem_params["poisson's ratio"]  # only needed for Kerner model
+    G0 = fem_params["shear_modulus"]  # kPa = mN/mm^2
 
     # Rho penalization 
     p, eps = opt["penalty"], opt["epsilon"]
     rho_penalty = eps + (1 - eps) * rho_phys_field**p
     G0 = G0 * rho_penalty
-
-    # WE-weighted void penalty infrastructure
-    w_void = Function(S0, name="w_void")
-
-    # Normalization constant P0 (set once in topopt.py when weights are first frozen)
-    P0_void = Constant(mesh, PETSc.ScalarType(1.0))
-
-    # Expose void-penalty fields for optimizer control
-    opt["we_voidpen_weight_field"] = w_void
-    opt["we_voidpen_P0_const"] = P0_void   
 
     model = fem_params.get("G_model", "default")
 
@@ -164,16 +118,24 @@ def form_fem(fem_params, opt):
     elif model == "mooney":
         mu = G0 * ufl.exp(2.5*phi_phys_field / (1.0 - 1.35*phi_phys_field))
     elif model == "kerner":
-        A = 15*(1 - nu) / (8 - 10*nu)
+        A = 2.5
         mu = G0 * (1 + (A*phi_phys_field) / (1.0 - phi_phys_field))
+    elif model == "LP":
+        mu = G0 / (1.0 - phi_phys_field)**2.5
+    elif model == "LPA":
+        g = 3.73
+        chi = 1.0 + 0.67*g*phi_phys_field + 1.62*(g*phi_phys_field)**2
+        mu = G0*(1.0 - phi_phys_field)*chi
+    elif model == "hill":
+        mu = G0 / (1.0 - 2.5*phi_phys_field)
     else:
         raise ValueError(f"Unknown G_model: {model}")
 
-    # Bulk modulus 
-    K = 1000 * G0
-    
-    # Magnetic parameters (now prescribed by input file)
-    mu_0_val = fem_params.get("mu0", 1.256e+3)  # mN/(kA)^2
+    # Penalized bulk modulus, independent of phi
+    K = 500 * G0
+
+    # Magnetic permeability in the mT-kPa unit system
+    mu_0_val = fem_params.get("mu0", 1.256e3)  # mT^2/kPa
     mu0 = Constant(mesh, PETSc.ScalarType(mu_0_val))
 
     # ============================================================
@@ -181,62 +143,67 @@ def form_fem(fem_params, opt):
     # ============================================================
     B_rem_mag = float(fem_params.get("B_rem_mag", 50.0))
 
-    element2 = basix.ufl.element("DG", mesh.basix_cell(), 0, shape=(mesh.geometry.dim,))
-    S0_vector = fem.functionspace(mesh, element2)
-    B_rem_field = Function(S0_vector, name="B_rem")  # for output/diagnostics
-
-    theta_active = dv_cfg.get("theta", {}).get("active", False)
-
-    # Remanent magnetic field
     if theta_active:
-        # UFL expression (updates automatically when theta_phys_field changes)
-        B_rem = B_rem_mag * ufl.as_vector((ufl.cos(theta_phys_field), ufl.sin(theta_phys_field)))
-
-        # Use current theta_phys_field value if present (it is already frozen when inactive; when active it starts at 0)
-        def _mag_flux_density_init(x):
-            f = np.zeros((mesh.geometry.dim, x.shape[1]), dtype=np.float64)
-            f[0, :] = B_rem_mag * 1.0
-            f[1, :] = B_rem_mag * 0.0
-            return f
-        B_rem_field.interpolate(_mag_flux_density_init)
+        # Spatial direction controlled by the filtered theta field
+        B_rem = B_rem_mag * ufl.as_vector((
+            ufl.cos(theta_phys_field),
+            ufl.sin(theta_phys_field),
+        ))
 
     else:
-        # Prescribed spatial remanence field from input, if provided.
-        B_rem_func = fem_params.get("B_rem_func", None)
+        # Prescribed remanence direction
+        vector_element = basix.ufl.element(
+            "DG",
+            mesh.basix_cell(),
+            0,
+            shape=(mesh.geometry.dim,),
+        )
+        S0_vector = fem.functionspace(mesh, vector_element)
+        B_rem_field = Function(S0_vector, name="B_rem")
+
+        B_rem_func = fem_params.get("B_rem_func")
 
         if B_rem_func is not None:
             def mag_flux_density(x):
-                dirs = B_rem_func(x)
+                directions = B_rem_func(x)
+                values = np.zeros(
+                    (mesh.geometry.dim, x.shape[1]),
+                    dtype=np.float64,
+                )
 
-                f = np.zeros((mesh.geometry.dim, x.shape[1]), dtype=np.float64)
+                norms = np.sqrt(
+                    directions[0, :]**2 + directions[1, :]**2
+                )
+                nonzero = norms > 1.0e-14
 
-                nrm = np.sqrt(dirs[0, :]**2 + dirs[1, :]**2)
-                good = nrm > 1.0e-14
-
-                f[0, good] = B_rem_mag * dirs[0, good] / nrm[good]
-                f[1, good] = B_rem_mag * dirs[1, good] / nrm[good]
-
-                return f
+                values[0, nonzero] = (
+                    B_rem_mag * directions[0, nonzero] / norms[nonzero]
+                )
+                values[1, nonzero] = (
+                    B_rem_mag * directions[1, nonzero] / norms[nonzero]
+                )
+                return values
 
         else:
-            # Prescribed uniform direction from input.
-            B_rem_dir = np.array(fem_params.get("B_rem_dir", (1.0, 0.0)), dtype=np.float64)
-            nrm = np.linalg.norm(B_rem_dir)
-            if nrm > 0:
-                B_rem_dir /= nrm
+            B_rem_dir = np.array(
+                fem_params.get("B_rem_dir", (1.0, 0.0)),
+                dtype=np.float64,
+            )
+            norm = np.linalg.norm(B_rem_dir)
+            if norm > 0:
+                B_rem_dir /= norm
 
             def mag_flux_density(x):
-                f = np.zeros((mesh.geometry.dim, x.shape[1]), dtype=np.float64)
-                f[0, :] = B_rem_mag * B_rem_dir[0]
-                f[1, :] = B_rem_mag * B_rem_dir[1]
-                return f
+                values = np.zeros(
+                    (mesh.geometry.dim, x.shape[1]),
+                    dtype=np.float64,
+                )
+                values[0, :] = B_rem_mag * B_rem_dir[0]
+                values[1, :] = B_rem_mag * B_rem_dir[1]
+                return values
 
         B_rem_field.interpolate(mag_flux_density)
         B_rem = B_rem_field
-        
-    # Expose both for downstream use
-    opt["B_rem_field"] = B_rem_field
-    opt["B_rem_expr"] = B_rem
 
     # --- Applied field (B_app) ---
     B_app_mag = float(fem_params.get("B_app_mag", 0.0))
@@ -276,7 +243,7 @@ def form_fem(fem_params, opt):
     bc = dirichletbc(Constant(mesh, np.full(dim, 0.0)), disp_dofs, V)
 
     # Tractions
-    facets, markers, traction_constants, tractions = [], [], [], [] 
+    facets, markers, traction_constants = [], [], []
 
     for marker, bc_dict in enumerate(fem_params["traction_bcs"]):
         traction_max = np.array(bc_dict["traction_max"], dtype=float)
@@ -298,63 +265,6 @@ def form_fem(fem_params, opt):
     dx = ufl.Measure("dx", metadata=metadata)
     ds = ufl.Measure("ds", domain=mesh, metadata=metadata, subdomain_data=facet_tags)
     
-    # ============================================================
-    # Objective Boundary Markers
-    # ============================================================
-    objective_bcs = opt.get("objective_bcs", [])
-    if objective_bcs is None:
-        objective_bcs = []
-
-    if len(objective_bcs) > 0:
-
-        # If user provides "marker", use gmsh facet tags directly.
-        marker_based = any(("marker" in bc) for bc in objective_bcs)
-
-        if marker_based:
-            facet_tags_gmsh = fem_params.get("facet_tags", None)
-            if facet_tags_gmsh is None:
-                raise RuntimeError(
-                    "Marker-based objective_bcs requires fem_params['facet_tags'] "
-                    "(gmsh facet tags) to be provided."
-                )
-
-            ds_obj = ufl.Measure("ds", domain=mesh, metadata=metadata, subdomain_data=facet_tags_gmsh)
-
-            # Store for downstream use
-            opt["ds_obj"] = ds_obj
-            opt["facet_tags_obj"] = facet_tags_gmsh
-            opt["objective_marker_map"] = {bc["name"]: int(bc["marker"]) for bc in objective_bcs}
-
-        else:
-            # Predicate-based objective boundaries (legacy path)
-            obj_facets, obj_markers = [], []
-
-            for obj_marker, bc_dict in enumerate(objective_bcs):
-                obj_func = bc_dict["on_boundary"]
-                current_facets = locate_entities_boundary(mesh, fdim, obj_func)
-                obj_facets.extend(current_facets)
-                obj_markers.extend([obj_marker] * len(current_facets))
-
-            obj_facets = np.array(obj_facets, dtype=np.int32)
-            obj_markers = np.array(obj_markers, dtype=np.int32)
-
-            # Remove duplicates + keep consistent ordering
-            _, unique_indices = np.unique(obj_facets, return_index=True)
-            obj_facets, obj_markers = obj_facets[unique_indices], obj_markers[unique_indices]
-            sorted_indices = np.argsort(obj_facets)
-
-            facet_tags_obj = meshtags(mesh, fdim, obj_facets[sorted_indices], obj_markers[sorted_indices])
-            ds_obj = ufl.Measure("ds", domain=mesh, metadata=metadata, subdomain_data=facet_tags_obj)
-
-            opt["facet_tags_obj"] = facet_tags_obj
-            opt["ds_obj"] = ds_obj
-            opt["objective_marker_map"] = {bc["name"]: i for i, bc in enumerate(objective_bcs)}
-
-    else:
-        opt["ds_obj"] = None
-        opt["objective_marker_map"] = {}
-
- 
     b = Constant(mesh, np.array(fem_params["body_force"], dtype=float))
 
     # ============================================================
@@ -373,17 +283,14 @@ def form_fem(fem_params, opt):
         W_elastic = (mu / 2) * (Ic - 3 - 2*ufl.ln(J)) + (K/2) * (J - 1)**2
     elif fem_params["hyperModel"] == "stVenant":
         Egreen = (C - I) / 2
-        W_elastic = (K/2) * (ufl.tr(Egreen))**2 + mu * ufl.tr(Egreen * Egreen)
+        Edev = Egreen - (ufl.tr(Egreen) / 3.0) * I
+        W_elastic = mu * ufl.tr(Edev * Edev) + (K / 2.0) * (ufl.tr(Egreen))**2       
 
     # Magnetic energy density
     W_magnetic = -(1/mu0) * inner(F * B_rem, B_app)
 
     # Effective magnetic fraction
     phi_eff = phi_phys_field * rho_phys_field
-
-    # For post-processing: magnetization-like vector field
-    # m(x) = phi_eff * [cos(theta_phys), sin(theta_phys)]
-    opt["m_expr"] = phi_eff * ufl.as_vector((ufl.cos(theta_phys_field), ufl.sin(theta_phys_field)))
 
     W_magnetic = phi_eff * W_magnetic
 
@@ -403,340 +310,127 @@ def form_fem(fem_params, opt):
     femProblem = WrapNonlinearProblem(u_field, R, [bc], fem_params["petsc_options"])
 
     # ============================================================
-    # GENERIC OBJECTIVE FORMS
+    # Objective
     # ============================================================
 
-    # Internal force 
+    # Derivative of the total internal energy with respect to displacement
     opt["f_int"] = ufl.derivative(W * dx, u_field, v)
 
-    # Determine objective type
     obj_type = opt.get("objective_type", "compliance")
 
     if obj_type == "compliance":
         J = inner(u_field, b) * dx
-        for marker, t in enumerate(traction_constants):
-            J += inner(u_field, t) * ds(marker)
+        for marker, traction in enumerate(traction_constants):
+            J += inner(u_field, traction) * ds(marker)
 
-    elif obj_type == "max_disp":
-        # Maximize boundary displacement magnitude
-        target_marker = 0
-        J = - ufl.inner(u_field, ufl.as_vector((0.0, 1.0))) * ds(target_marker)
-
-    elif obj_type == "max_disp_norm":
-        # Maximize displacement magnitude on right boundary (direction-free)
-        target_marker = 0
-        u_norm = ufl.sqrt(u_field[0]**2 + u_field[1]**2)
-        J = - u_norm * ds(target_marker)
-        
-    elif obj_type == "boundary_disp":
-        # Directional boundary displacement objective (actuator/gripper style)
-        ds_obj = opt.get("ds_obj", None)
-        objective_bcs = opt.get("objective_bcs", [])
-
-        if ds_obj is None or objective_bcs is None or len(objective_bcs) == 0:
-            raise RuntimeError(
-                "objective_type='boundary_disp' requires opt['objective_bcs'] (non-empty) "
-                "so fem.py can build ds_obj markers."
-            )
-
-        J = 0
-        for i, cfg in enumerate(objective_bcs):
-
-            # Direction (normalize safely)
-            d = np.array(cfg.get("direction", (0.0, 0.0)), dtype=float)
-            nrm = np.linalg.norm(d)
-            if nrm > 0:
-                d /= nrm
-            else:
-                raise RuntimeError(f"objective_bcs[{i}] has zero direction vector.")
-
-            w = float(cfg.get("weight", 1.0))
-
-            d_vec = ufl.as_vector((float(d[0]), float(d[1])))
-
-            # Accumulate directional boundary work-like term
-            marker = int(cfg.get("marker", i))
-            J += - w * ufl.inner(u_field, d_vec) * ds_obj(marker)
-
-    elif obj_type == "rotational_disp":
-        # Rotational displacement objective.
-        #
-        # This maximizes tangential displacement of an output boundary
-        # around a user-defined rotation center.
-        #
-        # For rotation_sign = +1:
-        #     t = [-ry, rx] / ||r||
-        # rewards CCW rotation.
-        #
-        # For rotation_sign = -1:
-        #     rewards CW rotation.
-
-        ds_obj = opt.get("ds_obj", None)
-        objective_bcs = opt.get("objective_bcs", [])
-
-        if ds_obj is None or objective_bcs is None or len(objective_bcs) == 0:
-            raise RuntimeError(
-                "objective_type='rotational_disp' requires opt['objective_bcs'] "
-                "so fem.py can build ds_obj markers."
-            )
-
-        X = ufl.SpatialCoordinate(mesh)
-
-        J = 0
-        for i, cfg in enumerate(objective_bcs):
-
-            center = cfg.get("center", None)
-            if center is None:
-                raise RuntimeError(
-                    f"objective_bcs[{i}] missing 'center' for rotational_disp."
-                )
-
-            xc = float(center[0])
-            yc = float(center[1])
-
-            marker = int(cfg.get("marker", i))
-            w = float(cfg.get("weight", 1.0))
-            rotation_sign = float(cfg.get("rotation_sign", 1.0))
-
-            rx = X[0] - xc
-            ry = X[1] - yc
-
-            # Small epsilon prevents division by zero if a facet lies too close to center.
-            rnorm = ufl.sqrt(rx**2 + ry**2 + 1.0e-12)
-
-            # Unit tangent direction.
-            # +1 gives CCW, -1 gives CW.
-            t_vec = rotation_sign * ufl.as_vector((
-                -ry / rnorm,
-                 rx / rnorm
-            ))
-
-            # Minimize negative tangential displacement = maximize rotation.
-            J += -w * ufl.inner(u_field, t_vec) * ds_obj(marker)
-            
     elif obj_type == "rotational_disp_band":
-        # Volumetric rotational displacement objective over a thin annular band.
-        # This is for internal output regions where ds boundary markers are awkward.
-        #
-        # J = - ∫ w_band(x) u · t dx
-        #
-        # rotation_sign = +1 rewards CCW rotation.
-        # rotation_sign = -1 rewards CW rotation.
-
-        center = opt.get("rotation_center", None)
+        center = opt.get("rotation_center")
         if center is None:
-            raise RuntimeError(
-                "objective_type='rotational_disp_band' requires opt['rotation_center']."
+            raise ValueError(
+                "rotational_disp_band requires opt['rotation_center']."
             )
 
-        xc = float(center[0])
-        yc = float(center[1])
-
-        R_obj = float(opt.get("rotation_radius", 1.0))
-        sigma = float(opt.get("rotation_band_sigma", 0.10))
+        rotation_radius = float(opt["rotation_radius"])
+        band_sigma = float(opt["rotation_band_sigma"])
         rotation_sign = float(opt.get("rotation_sign", 1.0))
-        w_obj = float(opt.get("rotation_weight", 1.0))
+        rotation_weight = float(opt.get("rotation_weight", 1.0))
+
+        if rotation_radius <= 0:
+            raise ValueError("rotation_radius must be positive.")
+        if band_sigma <= 0:
+            raise ValueError("rotation_band_sigma must be positive.")
 
         X = ufl.SpatialCoordinate(mesh)
+        rx = X[0] - float(center[0])
+        ry = X[1] - float(center[1])
+        radius = ufl.sqrt(rx**2 + ry**2 + 1.0e-12)
 
-        rx = X[0] - xc
-        ry = X[1] - yc
-
-        r = ufl.sqrt(rx**2 + ry**2 + 1.0e-12)
-
-        # Smooth annular band centered at r = R_obj
-        w_band = ufl.exp(-((r - R_obj) / sigma)**2)
-
-        # Unit tangent direction
-        t_vec = rotation_sign * ufl.as_vector((
-            -ry / r,
-             rx / r
+        band_weight = ufl.exp(
+            -((radius - rotation_radius) / band_sigma)**2
+        )
+        tangent = rotation_sign * ufl.as_vector((
+            -ry / radius,
+            rx / radius,
         ))
 
-        J = -w_obj * w_band * ufl.inner(u_field, t_vec) * dx
- 
+        J = (
+            -rotation_weight
+            * band_weight
+            * inner(u_field, tangent)
+            * dx
+        )
+
     elif obj_type == "disp_track":
-        # --------------------------------------------------------
-        # Displacement tracking objective (multi-point, vector)
-        #
-        # Supports:
-        #   opt["disp_track"] = dict  (single point, backward compatible)
-        #   opt["disp_track"] = list of dicts (multi-point)
-        #
-        # Each point dict supports:
-        #   "point":  (x, y)
-        #   "target": (ux_t, uy_t)   <-- vector target (Option A)
-        #   "sigma":  float          <-- Gaussian radius
-        #   "weight": float          <-- optional per-point weight
-        #
-        # Objective:
-        #   J = Σ_i weight_i ∫ w_i(x) ||u(x) - u_target_i||^2 dx
-        # --------------------------------------------------------
-
-        disp_cfg = opt["disp_track"]
-
-        # Normalize to list for backward compatibility
-        if isinstance(disp_cfg, dict):
-            disp_cfg_list = [disp_cfg]
-        else:
-            disp_cfg_list = list(disp_cfg)
-
-        # Spatial coordinate
         X = ufl.SpatialCoordinate(mesh)
-
-        # Displacement vector field
-        u_vec = ufl.as_vector((u_field[0], u_field[1]))
-
-        # Build objective as sum over points
         J = 0
 
-        # Store per-point diagnostics (optional, for printing in topopt.py)
-        opt["track_terms"] = []
+        for index, config in enumerate(opt["disp_track"]):
+            target_point = config["point"]
+            target_displacement = config["target"]
+            sigma = float(config.get("sigma", 1.0))
+            weight = float(config.get("weight", 1.0))
+            components = config.get("components", ("x", "y"))
 
-        for cfg in disp_cfg_list:
-            # Required
-            x_target = cfg["point"]  # (x, y)
+            if sigma <= 0:
+                raise ValueError(
+                    f"disp_track[{index}]['sigma'] must be positive."
+                )
+            if not components or any(
+                component not in ("x", "y")
+                for component in components
+            ):
+                raise ValueError(
+                    f"disp_track[{index}]['components'] must contain "
+                    "'x', 'y', or both."
+                )
 
-            # Target vector: accept tuple/list/np array
-            tgt = cfg["target"]
-            ux_t = float(tgt[0])
-            uy_t = float(tgt[1])
-            u_tgt = ufl.as_vector((ux_t, uy_t))
+            ux_target = float(target_displacement[0])
+            uy_target = float(target_displacement[1])
 
-            # Optional knobs
-            sigma = float(cfg.get("sigma", 1.0))
-            w_pt  = float(cfg.get("weight", 1.0))
-
-            # Gaussian localization weight
-            r2 = (X[0] - x_target[0])**2 + (X[1] - x_target[1])**2
-            w  = ufl.exp(-r2 / sigma**2)
-
-            # --------------------------------------------
-            # Component-selective displacement tracking
-            # --------------------------------------------
-            components = cfg.get("components", ("x", "y"))
-
-            term = 0
-
-            if "x" in components:
-                diff_x = u_field[0] - ux_t
-                term += diff_x**2
-
-            if "y" in components:
-                diff_y = u_field[1] - uy_t
-                term += diff_y**2
-
-            J += w_pt * w * term * dx
-
-            # Diagnostics:
-            #   weighted-average displacement vector over the local region
-            #   u_avg = (∫ u w dx) / (∫ w dx)
-            opt["track_terms"].append(
-                {
-                    # scalar component integrals (UFL-safe)
-                    "ux_form": u_field[0] * w * dx,
-                    "uy_form": u_field[1] * w * dx,
-                    "w_form":  w * dx,
-
-                    "target": (ux_t, uy_t),
-                    "point":  (float(x_target[0]), float(x_target[1])),
-                    "sigma":  sigma,
-                    "weight": w_pt,
-                }
+            distance_squared = (
+                (X[0] - target_point[0])**2
+                + (X[1] - target_point[1])**2
             )
+            localization = ufl.exp(-distance_squared / sigma**2)
+
+            tracking_error = 0
+            if "x" in components:
+                tracking_error += (u_field[0] - ux_target)**2
+            if "y" in components:
+                tracking_error += (u_field[1] - uy_target)**2
+
+            J += weight * localization * tracking_error * dx
 
     else:
-        raise RuntimeError(f"Unknown objective_type: {obj_type}")
+        raise ValueError(
+            f"Unknown objective_type: {obj_type}. Supported objectives are "
+            "'compliance', 'disp_track', and 'rotational_disp_band'."
+        )
 
-    # Store objective form
     opt["objective_form"] = J
-
-    # Derivatives of objective wrt fields
-    opt["dObj_du_form"]   = ufl.derivative(J, u_field)
+    opt["dObj_du_form"] = ufl.derivative(J, u_field)
     opt["dObj_drho_form"] = ufl.derivative(J, rho_phys_field)
     opt["dObj_dphi_form"] = ufl.derivative(J, phi_phys_field)
-    opt["dObj_dtheta_form"] = ufl.derivative(J, theta_phys_field)
+    opt["dObj_dtheta_form"] = ufl.derivative(
+        J,
+        theta_phys_field,
+    )
 
-    # TIP DISPLACEMENT (for displacement constraint)
-    target_marker = 0
-    u_tip_form = ufl.inner(u_field, ufl.as_vector((0.0, 1.0))) * ds(target_marker)
-
-    # Store scalar form
-    opt["u_tip_form"] = u_tip_form
-
-    # Partials for adjoint-based total derivatives
-    opt["dUtip_du_form"]     = ufl.derivative(u_tip_form, u_field)
-    opt["dUtip_drho_form"]   = ufl.derivative(u_tip_form, rho_phys_field)
-    opt["dUtip_dphi_form"]   = ufl.derivative(u_tip_form, phi_phys_field)
-    opt["dUtip_dtheta_form"] = ufl.derivative(u_tip_form, theta_phys_field)
-
-    # Compliance constraint forms
-    C_form = inner(u_field, b) * dx
-    for marker, t in enumerate(traction_constants):
-        C_form += inner(u_field, t) * ds(marker)
-
-    opt["compliance_form"] = C_form
-
-    # Partials needed for total derivative (adjoint-based)
-    opt["dC_du_form"]   = ufl.derivative(C_form, u_field)
-    opt["dC_drho_form"] = ufl.derivative(C_form, rho_phys_field)
-    opt["dC_dphi_form"] = ufl.derivative(C_form, phi_phys_field)
-    opt["dC_dtheta_form"] = ufl.derivative(C_form, theta_phys_field)
-
-    # Stress constraint 
-    # ---- material parameters ----
-    pnorm = opt.get("stress_pnorm", 12)
-    sigma_max = opt.get("sigma_max", 1e6)  # override in input script
-
-    # ---- compute Cauchy stress ----
-    P = ufl.diff(W, F)
+    # ============================================================
+    # Cauchy stress field for output
+    # ============================================================
     J_det = ufl.det(F)
     sigma_cauchy = (1.0 / J_det) * (P * ufl.transpose(F))
-
-    # ---- von-Mises ----
     sigma_dev = ufl.dev(ufl.sym(sigma_cauchy))
-    sigma_vm = ufl.sqrt(1.5 * ufl.inner(sigma_dev, sigma_dev))
-
-    # ---- stress relaxation weight ----
-    q_rho = float(opt.get("stress_q_rho", 1.0/3.0))
-    eps = opt["epsilon"]
-    w_sigma = eps + (1.0 - eps) * (rho_phys_field ** q_rho)
-
-    # ---- p-norm integrand ----
-    stress_integrand = (w_sigma * sigma_vm)**pnorm
-
-    # store the p-power form ( ∫ f^p dx )
-    opt["stress_power_form"] = stress_integrand * dx
-
-    # actual p-norm G = ( ∫ f^p dx )^(1/p) will be computed in Sensitivity.py
-    opt["stress_form"] = opt["stress_power_form"]
-
-    # ---- derivatives wrt fields ----
-    opt["dStress_du_form"]   = ufl.derivative(opt["stress_power_form"], u_field)
-    opt["dStress_drho_form"] = ufl.derivative(opt["stress_power_form"], rho_phys_field)
-    opt["dStress_dphi_form"] = ufl.derivative(opt["stress_power_form"], phi_phys_field)
-    opt["dStress_dtheta_form"] = ufl.derivative(opt["stress_power_form"], theta_phys_field)
-
-    # Store raw von-Mises expression for post-processing/output
+    sigma_vm = ufl.sqrt(
+        1.5 * ufl.inner(sigma_dev, sigma_dev)
+    )
     opt["sigma_vm_expr"] = sigma_vm
 
-    # Strain-energy constraint
-    # Store the elastic strain-energy integrand for constraint use
-    opt["strain_energy_form"] = W_elastic * dx
-
-    # Derivatives for adjoint computation (only used if enabled)
-    opt["dU_du_form"]   = ufl.derivative(W_elastic * dx, u_field)
-    opt["dU_drho_form"] = ufl.derivative(W_elastic * dx, rho_phys_field)
-    opt["dU_dphi_form"] = ufl.derivative(W_elastic * dx, phi_phys_field)
-    opt["dU_dtheta_form"] = ufl.derivative(W_elastic * dx, theta_phys_field)
-
-    # For ParaView visualization (optional): local strain energy density
-    opt["W_elastic_expr"] = W_elastic
-
-    # Define global optimization-related variables 
-    opt["volume_phi"] = phi_phys_field*dx
+    # Volume-constraint forms
+    opt["volume_phi"] = phi_phys_field * dx
     opt["volume_rho"] = rho_phys_field * dx
-    opt["total_volume"] = Constant(mesh, 1.0)*dx
+    opt["total_volume"] = Constant(mesh, 1.0) * dx
     
     phi_eff_field = Function(S, name="phi_eff")
 
