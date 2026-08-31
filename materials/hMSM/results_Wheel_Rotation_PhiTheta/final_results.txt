@@ -1,0 +1,7 @@
+FINAL objective value: -4.35394730e+02
+
+FINAL maximum displacements:
+  B_up_rotation: 1.05292260e+01
+
+FINAL constraints:
+  phi_volume: value=2.54179892e-01, residual=-1.52733693e-01

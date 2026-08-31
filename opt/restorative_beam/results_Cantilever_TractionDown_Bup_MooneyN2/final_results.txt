@@ -1,3 +1,0 @@
-FINAL max abs displacement: 2.3583e+00
-FINAL objective value: 45.5479
-FINAL volumes -> rho: 0.5000, phi: 0.1000

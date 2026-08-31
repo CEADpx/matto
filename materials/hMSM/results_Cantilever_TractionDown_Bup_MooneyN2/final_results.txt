@@ -1,0 +1,9 @@
+FINAL objective value: 4.55326085e+01
+
+FINAL maximum displacements:
+  traction_down_B_up: 2.35765383e+00
+  traction_up_B_down: 2.35766687e+00
+
+FINAL constraints:
+  rho_volume: value=4.99993336e-01, residual=-1.33283649e-05
+  phi_volume: value=9.99987318e-02, residual=-1.26821869e-05

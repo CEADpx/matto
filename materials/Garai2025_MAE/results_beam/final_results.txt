@@ -1,0 +1,7 @@
+FINAL objective value: 1.11573418e+01
+
+FINAL maximum displacements:
+  field_on: 1.11855320e+00
+
+FINAL constraints:
+  magnetic_material_fraction: value=2.99995702e-01, residual=-1.43275870e-05

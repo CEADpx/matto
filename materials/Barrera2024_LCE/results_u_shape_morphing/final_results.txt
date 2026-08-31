@@ -1,0 +1,7 @@
+FINAL objective value: 1.40624564e-04
+
+FINAL maximum displacements:
+  full_activation: 1.81408242e+00
+
+FINAL constraints:
+  active_lce_fraction: value=7.99715562e-01, residual=-3.55546941e-04

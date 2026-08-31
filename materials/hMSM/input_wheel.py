@@ -1,0 +1,563 @@
+# hMSM wheel rotation optimization
+
+import sys
+from pathlib import Path
+
+import numpy as np
+import ufl
+from mpi4py import MPI
+
+
+# Make the repository's modules directory importable when this file is stored
+# under either materials/hMSM/ or opt/wheel/.
+repository_root = Path(__file__).resolve().parents[2]
+modules_dir = repository_root / "modules"
+
+if str(modules_dir) not in sys.path:
+    sys.path.insert(0, str(modules_dir))
+
+from topopt import topopt
+
+
+# ============================================================
+#  GEOMETRY
+# ============================================================
+
+wheel = {
+    "R": 10.0,
+    "lc": 0.2,
+    "r_inner": 9.0,
+    "t": 0.5,
+}
+
+
+# ============================================================
+#  MESH
+# ============================================================
+
+def build_wheel_spokes_mesh(
+    R=1.0,
+    lc=0.05,
+    comm=MPI.COMM_WORLD,
+):
+    """Build the wheel rim and four-spoke geometry."""
+    import gmsh
+    from dolfinx.io.gmshio import model_to_mesh
+
+    rank = comm.rank
+
+    if rank == 0:
+        gmsh.initialize()
+        gmsh.model.add("wheel_spokes_opt")
+
+        inner_radius = wheel["r_inner"]
+        spoke_half_width = wheel["t"]
+
+        center = gmsh.model.geo.addPoint(
+            0.0,
+            0.0,
+            0.0,
+            lc,
+        )
+        x_spoke_start = gmsh.model.geo.addPoint(
+            spoke_half_width,
+            0.0,
+            0.0,
+            lc,
+        )
+        y_spoke_start = gmsh.model.geo.addPoint(
+            0.0,
+            spoke_half_width,
+            0.0,
+            lc,
+        )
+        outer_top = gmsh.model.geo.addPoint(
+            0.0,
+            R,
+            0.0,
+            lc,
+        )
+        outer_right = gmsh.model.geo.addPoint(
+            R,
+            0.0,
+            0.0,
+            lc,
+        )
+
+        spoke_corner = gmsh.model.geo.addPoint(
+            spoke_half_width,
+            spoke_half_width,
+            0.0,
+            lc,
+        )
+        inner_top = gmsh.model.geo.addPoint(
+            spoke_half_width,
+            inner_radius,
+            0.0,
+            lc,
+        )
+        inner_right = gmsh.model.geo.addPoint(
+            inner_radius,
+            spoke_half_width,
+            0.0,
+            lc,
+        )
+
+        outer_loop = gmsh.model.geo.addCurveLoop([
+            gmsh.model.geo.addLine(x_spoke_start, outer_right),
+            gmsh.model.geo.addCircleArc(
+                outer_right,
+                center,
+                outer_top,
+            ),
+            gmsh.model.geo.addLine(outer_top, y_spoke_start),
+            gmsh.model.geo.addLine(y_spoke_start, spoke_corner),
+            gmsh.model.geo.addLine(spoke_corner, x_spoke_start),
+        ])
+
+        inner_loop = gmsh.model.geo.addCurveLoop([
+            gmsh.model.geo.addLine(spoke_corner, inner_top),
+            gmsh.model.geo.addCircleArc(
+                inner_top,
+                center,
+                inner_right,
+            ),
+            gmsh.model.geo.addLine(inner_right, spoke_corner),
+        ])
+
+        surface = gmsh.model.geo.addPlaneSurface([
+            outer_loop,
+            inner_loop,
+        ])
+
+        for quarter_turn in (1, 2, 3):
+            copied_surface = gmsh.model.geo.copy([
+                (2, surface),
+            ])
+
+            gmsh.model.geo.rotate(
+                copied_surface,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                1.0,
+                quarter_turn * np.pi / 2.0,
+            )
+
+        gmsh.model.geo.synchronize()
+        gmsh.model.geo.removeAllDuplicates()
+        gmsh.model.geo.synchronize()
+
+        all_surfaces = [
+            tag
+            for dimension, tag in gmsh.model.getEntities(2)
+        ]
+
+        gmsh.model.addPhysicalGroup(
+            2,
+            all_surfaces,
+            1,
+        )
+        gmsh.model.setPhysicalName(2, 1, "domain")
+
+        gmsh.model.mesh.generate(2)
+
+    mesh, _, _ = model_to_mesh(
+        gmsh.model,
+        comm,
+        0,
+        gdim=2,
+    )
+
+    if rank == 0:
+        gmsh.finalize()
+
+    return mesh
+
+
+mesh = build_wheel_spokes_mesh(
+    R=wheel["R"],
+    lc=wheel["lc"],
+    comm=MPI.COMM_WORLD,
+)
+
+if MPI.COMM_WORLD.rank == 0:
+    mesh_serial = build_wheel_spokes_mesh(
+        R=wheel["R"],
+        lc=wheel["lc"],
+        comm=MPI.COMM_SELF,
+    )
+else:
+    mesh_serial = None
+
+
+# ============================================================
+#  MATERIAL AND INTERPOLATION PARAMETERS
+# ============================================================
+
+material_parameters = {
+    "G0": 100.0,          # Base shear modulus [kPa]
+    "p_rho": 3.0,
+    "eps_rho": 1.0e-6,
+    "mu0": 1.256e3,       # Vacuum permeability [mT^2/kPa]
+    "B_rem_mag": 100.0,   # Remanent magnetic flux density [mT]
+}
+
+
+# ============================================================
+#  DESIGN-VARIABLE SPECIFICATIONS
+# ============================================================
+
+design_variables = {
+    "rho": {
+        # The entire wheel structure is fixed solid material.
+        "active": False,
+        "initial": 1.0,
+        "bounds": (0.05, 1.0),
+        "prescribed_value": 1.0,
+        "raw_space": ("DG", 0),
+        "physical_space": ("CG", 1),
+        "operators": [
+            {
+                "type": "density_filter",
+                "radius": 1.0,
+            },
+        ],
+        "fixed_regions": [],
+    },
+
+    "phi": {
+        "active": True,
+        "initial": 0.30,
+        "bounds": (0.0, 0.30),
+        "prescribed_value": 0.0,
+        "raw_space": ("DG", 0),
+        "physical_space": ("CG", 1),
+        "operators": [
+            {
+                "type": "density_filter",
+                "radius": 1.0,
+            },
+        ],
+        "fixed_regions": [],
+    },
+
+    "theta": {
+        # theta = 0 gives the legacy initial remanence direction (+x).
+        "active": True,
+        "initial": 0.0,
+        "bounds": (-np.pi, np.pi),
+        "prescribed_value": 0.0,
+        "raw_space": ("DG", 0),
+        "physical_space": ("CG", 1),
+        "operators": [
+            {
+                "type": "density_filter",
+                "radius": 1.0,
+            },
+        ],
+        "fixed_regions": [],
+    },
+}
+
+
+# ============================================================
+#  BOUNDARY CONDITIONS AND LOAD CASES
+# ============================================================
+
+def clamp_inner_hub(x):
+    """Locate the four exposed sides of the central square hub."""
+    tolerance = 1.0e-8
+    half_width = wheel["t"]
+
+    return (
+        (
+            (np.abs(x[0] - half_width) < tolerance)
+            & (x[1] >= -half_width - tolerance)
+            & (x[1] <= half_width + tolerance)
+        )
+        |
+        (
+            (np.abs(x[1] - half_width) < tolerance)
+            & (x[0] >= -half_width - tolerance)
+            & (x[0] <= half_width + tolerance)
+        )
+        |
+        (
+            (np.abs(x[0] + half_width) < tolerance)
+            & (x[1] >= -half_width - tolerance)
+            & (x[1] <= half_width + tolerance)
+        )
+        |
+        (
+            (np.abs(x[1] + half_width) < tolerance)
+            & (x[0] >= -half_width - tolerance)
+            & (x[0] <= half_width + tolerance)
+        )
+    )
+
+
+boundary_conditions = [
+    {
+        "name": "clamped_inner_hub",
+        "on_boundary": clamp_inner_hub,
+        "value": (0.0, 0.0),
+    },
+]
+
+# This problem has no applied tractions.
+traction_boundaries = {}
+
+load_steps = 100
+
+load_cases = [
+    {
+        "name": "B_up_rotation",
+        "weight": 1.0,
+        "body_force": (0.0, 0.0),
+        "tractions": {},
+        "stimuli": {
+            "B_app": (0.0, 100.0),
+        },
+    },
+]
+
+
+# ============================================================
+#  FREE-ENERGY DENSITY
+# ============================================================
+
+def build_free_energy(
+    u_field,
+    design_variables,
+    stimuli,
+):
+    """Construct the complete 2D hMSM free-energy density."""
+    rho_phys = design_variables["rho"].phys
+    phi_phys = design_variables["phi"].phys
+    theta_phys = design_variables["theta"].phys
+
+    B_app = stimuli["B_app"]
+
+    G0 = material_parameters["G0"]
+    p_rho = material_parameters["p_rho"]
+    eps_rho = material_parameters["eps_rho"]
+    mu0 = material_parameters["mu0"]
+    B_rem_mag = material_parameters["B_rem_mag"]
+
+    I = ufl.Identity(2)
+    F = ufl.variable(I + ufl.grad(u_field))
+
+    C = F.T * F
+    I1 = ufl.tr(C)
+    J = ufl.det(F)
+
+    rho_scale = (
+        eps_rho
+        + (1.0 - eps_rho) * rho_phys**p_rho
+    )
+
+    G_matrix = G0 * rho_scale
+
+    # Mooney particle-reinforcement model used by the legacy input.
+    reinforcement = ufl.exp(
+        2.5 * phi_phys
+        / (1.0 - 1.35 * phi_phys)
+    )
+
+    mu = G_matrix * reinforcement
+    K = 500.0 * G_matrix
+
+    # Compressible neo-Hookean 2 energy used by the legacy input.
+    W_elastic = (
+        (mu / 2.0)
+        * (
+            I1
+            - 3.0
+            - 2.0 * ufl.ln(J)
+        )
+        + (K / 2.0) * (J - 1.0)**2
+    )
+
+    B_rem = B_rem_mag * ufl.as_vector((
+        ufl.cos(theta_phys),
+        ufl.sin(theta_phys),
+    ))
+
+    phi_eff = rho_phys * phi_phys
+
+    W_magnetic = (
+        -(1.0 / mu0)
+        * phi_eff
+        * ufl.inner(F * B_rem, B_app)
+    )
+
+    W = W_elastic + W_magnetic
+
+    return W, F
+
+
+# ============================================================
+#  OBJECTIVE
+# ============================================================
+
+rotation_center = (0.0, 0.0)
+rotation_radius = 0.95 * wheel["R"]
+rotation_band_sigma = 0.75
+rotation_sign = 1.0       # +1 rewards counterclockwise rotation
+rotation_weight = 1.0
+
+
+def build_objective(
+    u_field,
+    external_work,
+    dx,
+):
+    """Reward tangential displacement in an annular band near the rim."""
+    X = ufl.SpatialCoordinate(mesh)
+
+    radial_x = X[0] - rotation_center[0]
+    radial_y = X[1] - rotation_center[1]
+
+    radius = ufl.sqrt(
+        radial_x**2
+        + radial_y**2
+        + 1.0e-12
+    )
+
+    band_weight = ufl.exp(
+        -((radius - rotation_radius) / rotation_band_sigma)**2
+    )
+
+    tangent = rotation_sign * ufl.as_vector((
+        -radial_y / radius,
+        radial_x / radius,
+    ))
+
+    return (
+        -rotation_weight
+        * band_weight
+        * ufl.inner(u_field, tangent)
+        * dx
+    )
+
+
+# ============================================================
+#  CONSTRAINTS
+# ============================================================
+
+def build_constraints(
+    design_variables,
+    dx,
+):
+    """Constrain the domain-average magnetic particle fraction."""
+    phi_phys = design_variables["phi"].phys
+    domain_volume = 1.0 * dx
+
+    return {
+        "phi_volume": {
+            "form": phi_phys * dx,
+            "normalize_by": domain_volume,
+            "upper_bound": 0.30,
+        },
+    }
+
+
+# ============================================================
+#  REQUESTED OUTPUT FIELDS
+# ============================================================
+
+def build_output_fields(
+    design_variables,
+):
+    rho_phys = design_variables["rho"].phys
+    phi_phys = design_variables["phi"].phys
+    theta_phys = design_variables["theta"].phys
+
+    phi_eff = rho_phys * phi_phys
+
+    m_eff = phi_eff * ufl.as_vector((
+        ufl.cos(theta_phys),
+        ufl.sin(theta_phys),
+    ))
+
+    return {
+        "phi_eff": phi_eff,
+        "m_eff": m_eff,
+    }
+
+
+requested_output_fields = [
+    "u",
+    "rho_phys",
+    "phi_phys",
+    "theta_phys",
+    "phi_eff",
+    "m_eff",
+]
+
+
+# ============================================================
+#  SOLVER, MMA, AND OUTPUT OPTIONS
+# ============================================================
+
+fem_options = {
+    "quadrature_degree": 2,
+    "petsc_options": {
+        "ksp_type": "cg",
+        "pc_type": "gamg",
+        "snes_max_it": "500",
+        "snes_error_if_not_converged": None,
+    },
+}
+
+
+optimization_options = {
+    "max_iter": 100,
+    "opt_tol": 1.0e-5,
+    "move": 0.01,
+}
+
+
+output_options = {
+    "output_dir": str(
+        Path(__file__).resolve().parent
+        / "results_Wheel_Rotation_PhiTheta"
+    ),
+    "sim_output_interval": 25,
+    "sim_image_output_interval": 101,
+}
+
+
+# ============================================================
+#  COMPLETE PROBLEM DEFINITION
+# ============================================================
+
+problem = {
+    "mesh": mesh,
+    "mesh_serial": mesh_serial,
+    "material_parameters": material_parameters,
+    "design_variables": design_variables,
+    "boundary_conditions": boundary_conditions,
+    "traction_boundaries": traction_boundaries,
+    "load_steps": load_steps,
+    "load_cases": load_cases,
+    "build_free_energy": build_free_energy,
+    "build_objective": build_objective,
+    "build_constraints": build_constraints,
+    "build_output_fields": build_output_fields,
+    "requested_output_fields": requested_output_fields,
+    "fem_options": fem_options,
+    "optimization_options": optimization_options,
+    "output_options": output_options,
+}
+
+
+# ============================================================
+#  RUN
+# ============================================================
+
+if __name__ == "__main__":
+    topopt(problem)
