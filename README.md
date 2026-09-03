@@ -103,3 +103,22 @@ python input_beam_loadStep.py
 ```
 
 Optimization studies are run in the same way from their corresponding directories. Simulations write their result files to the output locations defined in each input script.
+
+## Citing this work
+
+This software:
+```bib
+@software{galloway_2026_21266889,
+  author       = {Galloway, Ian and
+                  Jha, Prashant K},
+  title        = {CEADpx/top\_optim - Joint material-structural
+                   optimization framework for field-responsive soft
+                   materials
+                  },
+  month        = jul,
+  year         = 2026,
+  publisher    = {Zenodo},
+  doi          = {10.5281/zenodo.21266889},
+  url          = {https://doi.org/10.5281/zenodo.21266889},
+}
+```
