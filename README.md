@@ -32,11 +32,11 @@ Each field can be optimized or prescribed. Its raw and physical function spaces,
 
 ## Framework organization
 
-MatTO uses an input-script interface rather than hard-coded material classes. Each problem supplies:
+MatTO uses an input-script interface rather than hard-coded material classes. Constitutive energy lives next to the examples, in `examples/<family>/material.py`, not in the `matto` package. Each problem supplies:
 
 1. A mesh, boundary conditions, loads, and stimulus-dependent load cases
 2. Design-variable specifications
-3. A UFL free-energy density
+3. A UFL free-energy density, imported from that family's `material.py`
 4. Objective and constraint forms
 5. Requested output fields
 6. Nonlinear solver, MMA, and output settings
@@ -183,12 +183,12 @@ The output directory is defined by `output_options` in each input script. A comp
 
 ## Adding a material model or optimization problem
 
-The fastest route is to copy the closest existing input script and replace only the problem-specific definitions:
+The fastest route is to copy the closest existing family directory and replace only the problem-specific definitions:
 
 1. Create the mesh and boundary markers.
 2. Declare the design fields and their operators.
 3. Define the load steps, load cases, and prescribed stimuli.
-4. Implement `build_free_energy(...)` and return the UFL energy density and deformation gradient.
+4. Put the family energy in `material.py` and bind it with `build_free_energy = make_build_free_energy(material_parameters)`.
 5. Implement the objective, constraints, and optional output fields.
 6. Assemble the `problem` dictionary and call `topopt(problem)` (`from matto.topopt import topopt`).
 
