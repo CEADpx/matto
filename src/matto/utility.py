@@ -355,11 +355,15 @@ class Communicator():
         func.x.array = global_values[self.idx]
 
     def gather(self, func):
-        """Gather data to Process 0 from all the other processes."""
+        """Gather owned values to Process 0 from all the other processes."""
         if type(func) is Function:
-            values_gather = self.comm.gather(func.x.array, root=0)
+            index_map = func.function_space.dofmap.index_map
+            block_size = func.function_space.dofmap.index_map_bs
+            owned = index_map.size_local * block_size
+            values_gather = self.comm.gather(func.x.array[:owned], root=0)
         elif type(func) is PETSc.Vec:
-            values_gather = self.comm.gather(func.array, root=0)
+            owned = func.getLocalSize()
+            values_gather = self.comm.gather(func.array[:owned], root=0)
         elif type(func) is np.ndarray:
             values_gather = self.comm.gather(func, root=0)
         else:
