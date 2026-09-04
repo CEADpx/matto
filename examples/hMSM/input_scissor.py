@@ -1,23 +1,12 @@
 # hMSM closed-push scissor optimization
 
-import sys
 from pathlib import Path
 
 import numpy as np
 import ufl
 from mpi4py import MPI
 
-
-# Make the repository's modules directory importable when this file is stored
-# under either materials/hMSM/ or opt/scissor/.
-repository_root = Path(__file__).resolve().parents[2]
-modules_dir = repository_root / "modules"
-
-if str(modules_dir) not in sys.path:
-    sys.path.insert(0, str(modules_dir))
-
-from topopt import topopt
-
+from matto.topopt import topopt
 
 # ============================================================
 #  GEOMETRY
@@ -31,7 +20,6 @@ geometry = {
     "y_mid": 7.0,
     "y_amp": 5.0,
 }
-
 
 # ============================================================
 #  MESH
@@ -145,7 +133,6 @@ def build_closed_push_mesh(lc=0.08, comm=MPI.COMM_WORLD):
 
     return mesh
 
-
 mesh = build_closed_push_mesh(
     lc=geometry["lc"],
     comm=MPI.COMM_WORLD,
@@ -159,7 +146,6 @@ if MPI.COMM_WORLD.rank == 0:
 else:
     mesh_serial = None
 
-
 # ============================================================
 #  MATERIAL AND INTERPOLATION PARAMETERS
 # ============================================================
@@ -172,7 +158,6 @@ material_parameters = {
     "B_rem_mag": 100.0,   # Remanent magnetic flux density [mT]
 }
 
-
 # ============================================================
 #  DESIGN-VARIABLE SPECIFICATIONS
 # ============================================================
@@ -181,11 +166,9 @@ L = geometry["L"]
 plate_x0 = L - geometry["plate_width"]
 y_mid = geometry["y_mid"]
 
-
 def phi_void_output_plate(x):
     """Keep magnetic particles out of the thin output plate."""
     return x[0] >= plate_x0
-
 
 design_variables = {
     "rho": {
@@ -244,7 +227,6 @@ design_variables = {
     },
 }
 
-
 # ============================================================
 #  BOUNDARY CONDITIONS AND LOAD CASES
 # ============================================================
@@ -273,7 +255,6 @@ load_cases = [
         },
     },
 ]
-
 
 # ============================================================
 #  FREE-ENERGY DENSITY
@@ -348,7 +329,6 @@ def build_free_energy(
 
     return W, F
 
-
 # ============================================================
 #  OBJECTIVE
 # ============================================================
@@ -362,7 +342,6 @@ displacement_targets = [
         "components": ("x", "y"),
     },
 ]
-
 
 def build_objective(
     u_field,
@@ -424,7 +403,6 @@ def build_objective(
 
     return objective
 
-
 # ============================================================
 #  CONSTRAINTS
 # ============================================================
@@ -444,7 +422,6 @@ def build_constraints(
             "upper_bound": 0.15,
         },
     }
-
 
 # ============================================================
 #  REQUESTED OUTPUT FIELDS
@@ -469,7 +446,6 @@ def build_output_fields(
         "m_eff": m_eff,
     }
 
-
 requested_output_fields = [
     "u",
     "rho_phys",
@@ -478,7 +454,6 @@ requested_output_fields = [
     "phi_eff",
     "m_eff",
 ]
-
 
 # ============================================================
 #  SOLVER, MMA, AND OUTPUT OPTIONS
@@ -494,13 +469,11 @@ fem_options = {
     },
 }
 
-
 optimization_options = {
     "max_iter": 100,
     "opt_tol": 1.0e-5,
     "move": 0.01,
 }
-
 
 output_options = {
     "output_dir": str(
@@ -510,7 +483,6 @@ output_options = {
     "sim_output_interval": 25,
     "sim_image_output_interval": 101,
 }
-
 
 # ============================================================
 #  COMPLETE PROBLEM DEFINITION
@@ -534,7 +506,6 @@ problem = {
     "optimization_options": optimization_options,
     "output_options": output_options,
 }
-
 
 # ============================================================
 #  RUN

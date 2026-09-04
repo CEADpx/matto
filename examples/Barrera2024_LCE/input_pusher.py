@@ -1,8 +1,7 @@
-# Barrera2024 LCE vertical-extension validation
-# Clamped solid LCE strip under activation and no mechanical load
-# Optimize active-material placement and mesogen direction to maximize average upward top-edge displacement.
+# Barrera2024 LCE V-pusher optimization
+# V-pusher under LCE activation and downward output traction
+# Jointly optimize structural topology, active-material placement, and mesogen direction to maximize upward output displacement.
 
-import sys
 from pathlib import Path
 
 import numpy as np
@@ -15,31 +14,75 @@ from dolfinx.mesh import (
     meshtags,
 )
 
-
-# Make the repository's modules directory importable when this file is stored
-# under materials/Barrera2024/.
-repository_root = Path(__file__).resolve().parents[2]
-modules_dir = repository_root / "modules"
-
-if str(modules_dir) not in sys.path:
-    sys.path.insert(0, str(modules_dir))
-
-from topopt import topopt
-
+from matto.topopt import topopt
 
 # ============================================================
-#  GEOMETRY AND MESH
+#  GEOMETRY
 # ============================================================
 
 geometry = {
-    "width": 2.0,
-    "height": 10.0,
-    "nx": 20,
-    "ny": 100,
+    "width": 12.0,
+    "height": 8.0,
+    "nx": 72,
+    "ny": 48,
+
+    # Passive attachment-pad dimensions
+    "support_width": 2.0,
+    "support_height": 2.0 / 3.0,
+    "output_width": 2.0,
+    "output_height": 2.0 / 3.0,
 }
 
 width = geometry["width"]
 height = geometry["height"]
+
+support_width = geometry["support_width"]
+support_height = geometry["support_height"]
+
+output_width = geometry["output_width"]
+output_height = geometry["output_height"]
+output_x_min = 0.5 * (width - output_width)
+output_x_max = 0.5 * (width + output_width)
+output_y_min = height - output_height
+
+def left_support_pad(x):
+    return (
+        (x[0] <= support_width)
+        & (x[1] <= support_height)
+    )
+
+def right_support_pad(x):
+    return (
+        (x[0] >= width - support_width)
+        & (x[1] <= support_height)
+    )
+
+def output_pad(x):
+    return (
+        (x[0] >= output_x_min)
+        & (x[0] <= output_x_max)
+        & (x[1] >= output_y_min)
+    )
+
+def attachment_pads(x):
+    """Union of the two supports and the top output pad."""
+    return (
+        left_support_pad(x)
+        | right_support_pad(x)
+        | output_pad(x)
+    )
+
+def initial_theta(x):
+    """Mirrored, nonstationary initial director field: +/-30 degrees."""
+    return np.where(
+        x[0] <= 0.5 * width,
+        np.pi / 6.0,
+        -np.pi / 6.0,
+    )
+
+# ============================================================
+#  MESH
+# ============================================================
 
 mesh = create_rectangle(
     MPI.COMM_WORLD,
@@ -59,31 +102,37 @@ if MPI.COMM_WORLD.rank == 0:
 else:
     mesh_serial = None
 
-
-# Tag the top edge so the objective can use its exact boundary average.
-top_boundary_tag = 1
+# Tag only the top boundary of the output pad for the displacement objective.
+output_boundary_tag = 1
 facet_dim = mesh.topology.dim - 1
 
-top_facets = locate_entities_boundary(
+output_facets = locate_entities_boundary(
     mesh,
     facet_dim,
-    lambda x: np.isclose(x[1], height),
+    lambda x: (
+        np.isclose(x[1], height)
+        & (x[0] >= output_x_min)
+        & (x[0] <= output_x_max)
+    ),
 )
-top_facets = np.sort(top_facets)
+output_facets = np.sort(output_facets)
 
-top_facet_tags = meshtags(
+output_facet_tags = meshtags(
     mesh,
     facet_dim,
-    top_facets,
-    np.full(top_facets.shape, top_boundary_tag, dtype=np.int32),
+    output_facets,
+    np.full(
+        output_facets.shape,
+        output_boundary_tag,
+        dtype=np.int32,
+    ),
 )
 
-ds_top = ufl.Measure(
+ds_output = ufl.Measure(
     "ds",
     domain=mesh,
-    subdomain_data=top_facet_tags,
+    subdomain_data=output_facet_tags,
 )
-
 
 # ============================================================
 #  MATERIAL AND INTERPOLATION PARAMETERS
@@ -105,42 +154,22 @@ material_parameters = {
     "p_phi": 3.0,
 }
 
-
 # ============================================================
 #  DESIGN-VARIABLE SPECIFICATIONS
 # ============================================================
 
 design_variables = {
     "rho": {
-        # The complete rectangle is fixed solid material.
-        "active": False,
-        "initial": 1.0,
-        "bounds": (0.05, 1.0),
-        "prescribed_value": 1.0,
-        "raw_space": ("DG", 0),
-        "physical_space": ("CG", 1),
-        "operators": [
-            {
-                "type": "density_filter",
-                "radius": 0.20,
-            },
-        ],
-        "fixed_regions": [],
-    },
-
-    "phi": {
-        # phi = 0: passive/disordered LCE.
-        # phi = 1: fully programmed/aligned active LCE.
         "active": True,
         "initial": 0.50,
-        "bounds": (0.00, 1.00),
+        "bounds": (0.05, 1.00),
         "prescribed_value": 1.00,
         "raw_space": ("DG", 0),
         "physical_space": ("CG", 1),
         "operators": [
             {
                 "type": "density_filter",
-                "radius": 0.20,
+                "radius": 0.55,
             },
             {
                 "type": "heaviside",
@@ -149,12 +178,48 @@ design_variables = {
                 "beta_max": 4.0,
             },
         ],
-        "fixed_regions": [],
+        "fixed_regions": [
+            {
+                # Preserve solid support and output attachment pads.
+                "where": attachment_pads,
+                "value": 1.0,
+            },
+        ],
+    },
+
+    "phi": {
+        # phi = 0 is passive/disordered LCE.
+        # phi = 1 is fully programmed/aligned active LCE.
+        "active": True,
+        "initial": 0.50,
+        "bounds": (0.00, 1.00),
+        "prescribed_value": 0.00,
+        "raw_space": ("DG", 0),
+        "physical_space": ("CG", 1),
+        "operators": [
+            {
+                "type": "density_filter",
+                "radius": 0.5,
+            },
+            {
+                "type": "heaviside",
+                "beta_initial": 1.0,
+                "beta_update_interval": 25,
+                "beta_max": 4.0,
+            },
+        ],
+        "fixed_regions": [
+            {
+                "where": attachment_pads,
+                "value": 0.0,
+            },
+        ],
     },
 
     "theta": {
+
         "active": True,
-        "initial": np.pi / 12.0,
+        "initial": initial_theta,
         "bounds": (-np.pi / 2.0, np.pi / 2.0),
         "prescribed_value": 0.0,
         "raw_space": ("DG", 0),
@@ -162,13 +227,12 @@ design_variables = {
         "operators": [
             {
                 "type": "density_filter",
-                "radius": 0.20,
+                "radius": 0.35,
             },
         ],
         "fixed_regions": [],
     },
 }
-
 
 # ============================================================
 #  BOUNDARY CONDITIONS AND LOAD CASE
@@ -176,30 +240,44 @@ design_variables = {
 
 boundary_conditions = [
     {
-        "name": "clamped_bottom",
-        "on_boundary": lambda x: np.isclose(x[1], 0.0),
+        "name": "clamped_bottom_supports",
+        "on_boundary": lambda x: (
+            np.isclose(x[1], 0.0)
+            & (
+                (x[0] <= support_width)
+                | (x[0] >= width - support_width)
+            )
+        ),
         "value": (0.0, 0.0),
     },
 ]
 
-traction_boundaries = {}
+traction_boundaries = {
+    "output_top": lambda x: (
+        np.isclose(x[1], height)
+        & (x[0] >= output_x_min)
+        & (x[0] <= output_x_max)
+    ),
+}
 
-load_steps = 40
+load_steps = 50
 
 load_cases = [
     {
-        "name": "full_activation",
+        "name": "activated_pusher",
         "weight": 1.0,
+
         "body_force": (0.0, 0.0),
-        "tractions": {},
+
+        "tractions": {
+            "output_top": (0.0, -25.0),
+        },
+
         "stimuli": {
-            # activation = 0 gives S = S0 and zero coupling.
-            # activation = 1 gives S = 0 and maximum coupling.
             "activation": 1.0,
         },
     },
 ]
-
 
 # ============================================================
 #  FREE-ENERGY DENSITY
@@ -245,8 +323,7 @@ def build_free_energy(
 
     Q_nem = 3.0 * ufl.outer(director, director) - I
 
-    # The solver ramps activation upward from zero. This corresponds to
-    # decreasing the order parameter from S0 to zero:
+    # The load step ramps activation from zero to one:
     #     S = S0 * (1 - activation)
     #     delta_S = S0 - S = S0 * activation
     delta_S = S0 * activation
@@ -276,7 +353,6 @@ def build_free_energy(
 
     return W, F
 
-
 # ============================================================
 #  OBJECTIVE
 # ============================================================
@@ -286,13 +362,14 @@ def build_objective(
     external_work,
     dx,
 ):
-    """Maximize the average vertical displacement of the top edge."""
+    """Maximize average upward displacement of the output boundary."""
+    # topopt minimizes. Apply all scalar normalization before ds creates the
+    # completed UFL Form.
     return (
-        -(1.0 / (width * height))
+        -(1.0 / (output_width * height))
         * u_field[1]
-        * ds_top(top_boundary_tag)
+        * ds_output(output_boundary_tag)
     )
-
 
 # ============================================================
 #  CONSTRAINTS
@@ -302,18 +379,28 @@ def build_constraints(
     design_variables,
     dx,
 ):
-    """Allow phi to fill the domain while satisfying the MMA interface."""
+    rho_phys = design_variables["rho"].phys
     phi_phys = design_variables["phi"].phys
+
     domain_volume = 1.0 * dx
+    active_fraction_limit = 0.50  # volume fraction of LCE allowed in solid regions
 
     return {
-        "phi_volume": {
-            "form": phi_phys * dx,
+        "rho_volume": {
+            "form": rho_phys * dx,
             "normalize_by": domain_volume,
-            "upper_bound": 1.0,
+            "upper_bound": 0.50,
+        },
+
+        "active_lce_fraction": {
+            "form": (
+                rho_phys * phi_phys
+                + active_fraction_limit * (1.0 - rho_phys)
+            ) * dx,
+            "normalize_by": domain_volume,
+            "upper_bound": active_fraction_limit,
         },
     }
-
 
 # ============================================================
 #  REQUESTED OUTPUT FIELDS
@@ -322,31 +409,32 @@ def build_constraints(
 def build_output_fields(
     design_variables,
 ):
+    rho_phys = design_variables["rho"].phys
     phi_phys = design_variables["phi"].phys
     theta_phys = design_variables["theta"].phys
+
+    active_lce = rho_phys * phi_phys
 
     director = ufl.as_vector((
         ufl.cos(theta_phys),
         ufl.sin(theta_phys),
     ))
 
-    # Scale the director by phi so passive regions have zero active direction
-    # in visualization output.
-    active_director = phi_phys * director
+    active_director = active_lce * director
 
     return {
+        "active_lce": active_lce,
         "active_director": active_director,
     }
-
 
 requested_output_fields = [
     "u",
     "rho_phys",
     "phi_phys",
     "theta_phys",
+    "active_lce",
     "active_director",
 ]
-
 
 # ============================================================
 #  SOLVER, MMA, AND OUTPUT OPTIONS
@@ -362,23 +450,20 @@ fem_options = {
     },
 }
 
-
 optimization_options = {
-    "max_iter": 100,
+    "max_iter": 150,
     "opt_tol": 1.0e-5,
-    "move": 0.05,
+    "move": 0.03,
 }
-
 
 output_options = {
     "output_dir": str(
         Path(__file__).resolve().parent
-        / "results_vertical_extension"
+        / "results_pusher"
     ),
     "sim_output_interval": 25,
-    "sim_image_output_interval": 101,
+    "sim_image_output_interval": 151,
 }
-
 
 # ============================================================
 #  COMPLETE PROBLEM DEFINITION
@@ -402,7 +487,6 @@ problem = {
     "optimization_options": optimization_options,
     "output_options": output_options,
 }
-
 
 # ============================================================
 #  RUN

@@ -1,23 +1,12 @@
 # hMSM wheel rotation optimization
 
-import sys
 from pathlib import Path
 
 import numpy as np
 import ufl
 from mpi4py import MPI
 
-
-# Make the repository's modules directory importable when this file is stored
-# under either materials/hMSM/ or opt/wheel/.
-repository_root = Path(__file__).resolve().parents[2]
-modules_dir = repository_root / "modules"
-
-if str(modules_dir) not in sys.path:
-    sys.path.insert(0, str(modules_dir))
-
-from topopt import topopt
-
+from matto.topopt import topopt
 
 # ============================================================
 #  GEOMETRY
@@ -29,7 +18,6 @@ wheel = {
     "r_inner": 9.0,
     "t": 0.5,
 }
-
 
 # ============================================================
 #  MESH
@@ -176,7 +164,6 @@ def build_wheel_spokes_mesh(
 
     return mesh
 
-
 mesh = build_wheel_spokes_mesh(
     R=wheel["R"],
     lc=wheel["lc"],
@@ -192,7 +179,6 @@ if MPI.COMM_WORLD.rank == 0:
 else:
     mesh_serial = None
 
-
 # ============================================================
 #  MATERIAL AND INTERPOLATION PARAMETERS
 # ============================================================
@@ -204,7 +190,6 @@ material_parameters = {
     "mu0": 1.256e3,       # Vacuum permeability [mT^2/kPa]
     "B_rem_mag": 100.0,   # Remanent magnetic flux density [mT]
 }
-
 
 # ============================================================
 #  DESIGN-VARIABLE SPECIFICATIONS
@@ -262,7 +247,6 @@ design_variables = {
     },
 }
 
-
 # ============================================================
 #  BOUNDARY CONDITIONS AND LOAD CASES
 # ============================================================
@@ -298,7 +282,6 @@ def clamp_inner_hub(x):
         )
     )
 
-
 boundary_conditions = [
     {
         "name": "clamped_inner_hub",
@@ -323,7 +306,6 @@ load_cases = [
         },
     },
 ]
-
 
 # ============================================================
 #  FREE-ENERGY DENSITY
@@ -398,7 +380,6 @@ def build_free_energy(
 
     return W, F
 
-
 # ============================================================
 #  OBJECTIVE
 # ============================================================
@@ -408,7 +389,6 @@ rotation_radius = 0.95 * wheel["R"]
 rotation_band_sigma = 0.75
 rotation_sign = 1.0       # +1 rewards counterclockwise rotation
 rotation_weight = 1.0
-
 
 def build_objective(
     u_field,
@@ -443,7 +423,6 @@ def build_objective(
         * dx
     )
 
-
 # ============================================================
 #  CONSTRAINTS
 # ============================================================
@@ -463,7 +442,6 @@ def build_constraints(
             "upper_bound": 0.30,
         },
     }
-
 
 # ============================================================
 #  REQUESTED OUTPUT FIELDS
@@ -488,7 +466,6 @@ def build_output_fields(
         "m_eff": m_eff,
     }
 
-
 requested_output_fields = [
     "u",
     "rho_phys",
@@ -497,7 +474,6 @@ requested_output_fields = [
     "phi_eff",
     "m_eff",
 ]
-
 
 # ============================================================
 #  SOLVER, MMA, AND OUTPUT OPTIONS
@@ -513,13 +489,11 @@ fem_options = {
     },
 }
 
-
 optimization_options = {
     "max_iter": 100,
     "opt_tol": 1.0e-5,
     "move": 0.01,
 }
-
 
 output_options = {
     "output_dir": str(
@@ -529,7 +503,6 @@ output_options = {
     "sim_output_interval": 25,
     "sim_image_output_interval": 101,
 }
-
 
 # ============================================================
 #  COMPLETE PROBLEM DEFINITION
@@ -553,7 +526,6 @@ problem = {
     "optimization_options": optimization_options,
     "output_options": output_options,
 }
-
 
 # ============================================================
 #  RUN

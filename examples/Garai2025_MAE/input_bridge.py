@@ -1,7 +1,7 @@
-# Garai2025 isotropic MAP cantilever optimization
-# Cantilever under downward end traction; optimize magnetic-material placement to minimize field-on compliance.
+# Garai2025 isotropic MAP bridge optimization
+# Bridge with clamped supports and central downward traction
+# Optimize structural topology and magnetic-material placement to minimize compliance.
 
-import sys
 from pathlib import Path
 
 import numpy as np
@@ -9,15 +9,60 @@ import ufl
 from mpi4py import MPI
 from dolfinx.mesh import CellType, create_rectangle
 
+from matto.topopt import topopt
 
-repository_root = Path(__file__).resolve().parents[2]
-modules_dir = repository_root / "modules"
+# ============================================================
+#  GEOMETRY
+# ============================================================
 
-if str(modules_dir) not in sys.path:
-    sys.path.insert(0, str(modules_dir))
+geometry = {
+    "width": 120.0,
+    "height": 50.0,
+    "nx": 96,
+    "ny": 40,
+    "support_width": 12.0,
+    "support_height": 4.0,
+    "load_width": 10.0,
+    "load_height": 4.0,
+}
 
-from topopt import topopt
+width = geometry["width"]
+height = geometry["height"]
 
+support_width = geometry["support_width"]
+support_height = geometry["support_height"]
+
+load_width = geometry["load_width"]
+load_height = geometry["load_height"]
+load_x_min = 0.5 * (width - load_width)
+load_x_max = 0.5 * (width + load_width)
+load_y_min = height - load_height
+
+def left_support_pad(x):
+    return (
+        (x[0] <= support_width)
+        & (x[1] <= support_height)
+    )
+
+def right_support_pad(x):
+    return (
+        (x[0] >= width - support_width)
+        & (x[1] <= support_height)
+    )
+
+def load_pad(x):
+    return (
+        (x[0] >= load_x_min)
+        & (x[0] <= load_x_max)
+        & (x[1] >= load_y_min)
+    )
+
+def attachment_pads(x):
+    return (
+        left_support_pad(x)
+        | right_support_pad(x)
+        | load_pad(x)
+    )
 
 # ============================================================
 #  MESH
@@ -25,21 +70,20 @@ from topopt import topopt
 
 mesh = create_rectangle(
     MPI.COMM_WORLD,
-    [[0.0, 0.0], [100.0, 20.0]],
-    [150, 30],
+    [[0.0, 0.0], [width, height]],
+    [geometry["nx"], geometry["ny"]],
     cell_type=CellType.quadrilateral,
 )
 
 if MPI.COMM_WORLD.rank == 0:
     mesh_serial = create_rectangle(
         MPI.COMM_SELF,
-        [[0.0, 0.0], [100.0, 20.0]],
-        [150, 30],
+        [[0.0, 0.0], [width, height]],
+        [geometry["nx"], geometry["ny"]],
         cell_type=CellType.quadrilateral,
     )
 else:
     mesh_serial = None
-
 
 # ============================================================
 #  MATERIAL AND INTERPOLATION PARAMETERS
@@ -70,26 +114,36 @@ material_parameters = {
     "p_phi": 1.0,
 }
 
-
 # ============================================================
 #  DESIGN-VARIABLE SPECIFICATIONS
 # ============================================================
 
 design_variables = {
     "rho": {
-        "active": False,
-        "initial": 1.0,
+        "active": True,
+        "initial": 0.45,
         "bounds": (0.05, 1.00),
-        "prescribed_value": 1.0,
+        "prescribed_value": 1.00,
         "raw_space": ("DG", 0),
         "physical_space": ("CG", 1),
         "operators": [
             {
                 "type": "density_filter",
-                "radius": 1.0,
+                "radius": 2.0,
+            },
+            {
+                "type": "heaviside",
+                "beta_initial": 1.0,
+                "beta_update_interval": 25,
+                "beta_max": 4.0,
             },
         ],
-        "fixed_regions": [],
+        "fixed_regions": [
+            {
+                "where": attachment_pads,
+                "value": 1.0,
+            },
+        ],
     },
 
     "phi": {
@@ -103,13 +157,23 @@ design_variables = {
         "operators": [
             {
                 "type": "density_filter",
-                "radius": 1.0,
+                "radius": 2.0,
+            },
+            {
+                "type": "heaviside",
+                "beta_initial": 1.0,
+                "beta_update_interval": 25,
+                "beta_max": 4.0,
             },
         ],
-        "fixed_regions": [],
+        "fixed_regions": [
+            {
+                "where": attachment_pads,
+                "value": 0.0,
+            },
+        ],
     },
 }
-
 
 # ============================================================
 #  BOUNDARY CONDITIONS AND LOAD CASES
@@ -117,17 +181,27 @@ design_variables = {
 
 boundary_conditions = [
     {
-        "name": "clamped_left",
-        "on_boundary": lambda x: np.isclose(x[0], 0.0),
+        "name": "clamped_bottom_supports",
+        "on_boundary": lambda x: (
+            np.isclose(x[1], 0.0)
+            & (
+                (x[0] <= support_width)
+                | (x[0] >= width - support_width)
+            )
+        ),
         "value": (0.0, 0.0),
     },
 ]
 
 traction_boundaries = {
-    "out_right": lambda x: np.isclose(x[0], 100.0),
+    "top_center": lambda x: (
+        np.isclose(x[1], height)
+        & (x[0] >= load_x_min)
+        & (x[0] <= load_x_max)
+    ),
 }
 
-load_steps = 50
+load_steps = 25
 
 load_cases = [
     {
@@ -135,14 +209,13 @@ load_cases = [
         "weight": 1.0,
         "body_force": (0.0, 0.0),
         "tractions": {
-            "out_right": (0.0, -0.50),
+            "top_center": (0.0, -1.0),
         },
         "stimuli": {
             "h": 0.45,
         },
     },
 ]
-
 
 # ============================================================
 #  FREE-ENERGY DENSITY
@@ -227,7 +300,6 @@ def build_free_energy(
 
     return W, F2
 
-
 # ============================================================
 #  OBJECTIVE
 # ============================================================
@@ -237,9 +309,8 @@ def build_objective(
     external_work,
     dx,
 ):
-    """Minimize compliance in the field-on load case."""
+    """Minimize field-on compliance."""
     return external_work
-
 
 # ============================================================
 #  CONSTRAINTS
@@ -249,17 +320,28 @@ def build_constraints(
     design_variables,
     dx,
 ):
+    rho_phys = design_variables["rho"].phys
     phi_phys = design_variables["phi"].phys
+
     domain_volume = 1.0 * dx
+    magnetic_fraction_limit = 0.30
 
     return {
-        "magnetic_material_fraction": {
-            "form": phi_phys * dx,
+        "solid_volume": {
+            "form": rho_phys * dx,
             "normalize_by": domain_volume,
-            "upper_bound": 0.30,
+            "upper_bound": 0.45,
+        },
+
+        "magnetic_fraction_of_solid": {
+            "form": (
+                rho_phys * phi_phys
+                + magnetic_fraction_limit * (1.0 - rho_phys)
+            ) * dx,
+            "normalize_by": domain_volume,
+            "upper_bound": magnetic_fraction_limit,
         },
     }
-
 
 # ============================================================
 #  REQUESTED OUTPUT FIELDS
@@ -275,14 +357,12 @@ def build_output_fields(
         "magnetic_material": rho_phys * phi_phys,
     }
 
-
 requested_output_fields = [
     "u",
     "rho_phys",
     "phi_phys",
     "magnetic_material",
 ]
-
 
 # ============================================================
 #  SOLVER, MMA, AND OUTPUT OPTIONS
@@ -298,23 +378,20 @@ fem_options = {
     },
 }
 
-
 optimization_options = {
-    "max_iter": 50,
+    "max_iter": 100,
     "opt_tol": 1.0e-5,
-    "move": 0.03,
+    "move": 0.02,
 }
-
 
 output_options = {
     "output_dir": str(
         Path(__file__).resolve().parent
-        / "results_beam"
+        / "results_bridge"
     ),
-    "sim_output_interval": 10,
-    "sim_image_output_interval": 51,
+    "sim_output_interval": 20,
+    "sim_image_output_interval": 101,
 }
-
 
 # ============================================================
 #  COMPLETE PROBLEM DEFINITION
@@ -338,7 +415,6 @@ problem = {
     "optimization_options": optimization_options,
     "output_options": output_options,
 }
-
 
 # ============================================================
 #  RUN

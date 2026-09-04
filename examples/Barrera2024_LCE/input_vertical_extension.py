@@ -1,70 +1,38 @@
-# Barrera2024 LCE U-shape morphing optimization
-# Center-supported flat strip under activation; optimize active-material placement and mesogen direction so both free arms curl upward into a U shape.
+# Barrera2024 LCE vertical-extension validation
+# Clamped solid LCE strip under activation and no mechanical load
+# Optimize active-material placement and mesogen direction to maximize average upward top-edge displacement.
 
-import sys
 from pathlib import Path
 
 import numpy as np
 import ufl
 from mpi4py import MPI
-from dolfinx.mesh import CellType, create_rectangle
+from dolfinx.mesh import (
+    CellType,
+    create_rectangle,
+    locate_entities_boundary,
+    meshtags,
+)
 
-
-# Make the repository's modules directory importable when this file is stored
-# under materials/Barrera2024/.
-repository_root = Path(__file__).resolve().parents[2]
-modules_dir = repository_root / "modules"
-
-if str(modules_dir) not in sys.path:
-    sys.path.insert(0, str(modules_dir))
-
-from topopt import topopt
-
+from matto.topopt import topopt
 
 # ============================================================
-#  GEOMETRY, TARGET SHAPE, AND MESH
+#  GEOMETRY AND MESH
 # ============================================================
 
 geometry = {
-    "length": 12.0,
-    "height": 0.60,
-    "nx": 120,
-    "ny": 12,
-    # Width of the fixed pad centered on the bottom edge.
-    "support_pad_width": 0.60,
-    # Each free arm should turn upward through this angle.
-    "target_arm_angle": np.deg2rad(45.0),
+    "width": 2.0,
+    "height": 10.0,
+    "nx": 20,
+    "ny": 100,
 }
 
-length = geometry["length"]
+width = geometry["width"]
 height = geometry["height"]
-support_pad_width = geometry["support_pad_width"]
-target_arm_angle = geometry["target_arm_angle"]
-center_x = 0.5 * length
-support_half_width = 0.5 * support_pad_width
-free_arm_length = center_x - support_half_width
-
-
-def initial_theta(x):
-    """Seed positive curvature in both arms using two director layers."""
-    return np.where(
-        x[1] <= 0.5 * height,
-        0.0,
-        np.pi / 2.0,
-    )
-
-
-def center_support_pad(x):
-    """Small clamped pad centered on the bottom boundary."""
-    return (
-        np.isclose(x[1], 0.0)
-        & (np.abs(x[0] - center_x) <= support_half_width)
-    )
-
 
 mesh = create_rectangle(
     MPI.COMM_WORLD,
-    [[0.0, 0.0], [length, height]],
+    [[0.0, 0.0], [width, height]],
     [geometry["nx"], geometry["ny"]],
     cell_type=CellType.quadrilateral,
 )
@@ -73,71 +41,36 @@ mesh = create_rectangle(
 if MPI.COMM_WORLD.rank == 0:
     mesh_serial = create_rectangle(
         MPI.COMM_SELF,
-        [[0.0, 0.0], [length, height]],
+        [[0.0, 0.0], [width, height]],
         [geometry["nx"], geometry["ny"]],
         cell_type=CellType.quadrilateral,
     )
 else:
     mesh_serial = None
 
+# Tag the top edge so the objective can use its exact boundary average.
+top_boundary_tag = 1
+facet_dim = mesh.topology.dim - 1
 
-def prescribed_target_displacement():
-    """Map the two free arms to symmetric upward circular arcs."""
-    X = ufl.SpatialCoordinate(mesh)
+top_facets = locate_entities_boundary(
+    mesh,
+    facet_dim,
+    lambda x: np.isclose(x[1], height),
+)
+top_facets = np.sort(top_facets)
 
-    horizontal_offset = X[0] - center_x
+top_facet_tags = meshtags(
+    mesh,
+    facet_dim,
+    top_facets,
+    np.full(top_facets.shape, top_boundary_tag, dtype=np.int32),
+)
 
-    # Signed distance along either free arm, measured outward from the edge of
-    # the flat support pad. It is exactly zero throughout the support pad.
-    signed_arc_coordinate = ufl.conditional(
-        ufl.gt(horizontal_offset, support_half_width),
-        horizontal_offset - support_half_width,
-        ufl.conditional(
-            ufl.lt(horizontal_offset, -support_half_width),
-            horizontal_offset + support_half_width,
-            0.0,
-        ),
-    )
-
-    local_angle = (
-        target_arm_angle
-        * signed_arc_coordinate
-        / free_arm_length
-    )
-    target_radius = free_arm_length / target_arm_angle
-
-    # The centerline stays flat over the support pad. Each free arm begins at
-    # its corresponding pad edge and follows a constant-curvature arc.
-    arc_origin_x = ufl.conditional(
-        ufl.gt(horizontal_offset, support_half_width),
-        center_x + support_half_width,
-        ufl.conditional(
-            ufl.lt(horizontal_offset, -support_half_width),
-            center_x - support_half_width,
-            X[0],
-        ),
-    )
-
-    centerline_x = (
-        arc_origin_x
-        + target_radius * ufl.sin(local_angle)
-    )
-    centerline_y = (
-        0.5 * height
-        + target_radius * (1.0 - ufl.cos(local_angle))
-    )
-
-    # Rotate each cross-section rigidly with the target centerline tangent.
-    transverse_coordinate = X[1] - 0.5 * height
-    target_position = ufl.as_vector((
-        centerline_x
-        - transverse_coordinate * ufl.sin(local_angle),
-        centerline_y
-        + transverse_coordinate * ufl.cos(local_angle),
-    ))
-
-    return target_position - X
-
+ds_top = ufl.Measure(
+    "ds",
+    domain=mesh,
+    subdomain_data=top_facet_tags,
+)
 
 # ============================================================
 #  MATERIAL AND INTERPOLATION PARAMETERS
@@ -159,14 +92,13 @@ material_parameters = {
     "p_phi": 3.0,
 }
 
-
 # ============================================================
 #  DESIGN-VARIABLE SPECIFICATIONS
 # ============================================================
 
 design_variables = {
     "rho": {
-        # Keep the complete strip solid: this is a material-programming problem.
+        # The complete rectangle is fixed solid material.
         "active": False,
         "initial": 1.0,
         "bounds": (0.05, 1.0),
@@ -207,10 +139,8 @@ design_variables = {
     },
 
     "theta": {
-        # In-plane mesogen direction. The two-layer seed already bends upward,
-        # while the optimizer remains free to rotate the local director.
         "active": True,
-        "initial": initial_theta,
+        "initial": np.pi / 12.0,
         "bounds": (-np.pi / 2.0, np.pi / 2.0),
         "prescribed_value": 0.0,
         "raw_space": ("DG", 0),
@@ -218,13 +148,12 @@ design_variables = {
         "operators": [
             {
                 "type": "density_filter",
-                "radius": 0.15,
+                "radius": 0.20,
             },
         ],
         "fixed_regions": [],
     },
 }
-
 
 # ============================================================
 #  BOUNDARY CONDITIONS AND LOAD CASE
@@ -232,15 +161,15 @@ design_variables = {
 
 boundary_conditions = [
     {
-        "name": "clamped_center_pad",
-        "on_boundary": center_support_pad,
+        "name": "clamped_bottom",
+        "on_boundary": lambda x: np.isclose(x[1], 0.0),
         "value": (0.0, 0.0),
     },
 ]
 
 traction_boundaries = {}
 
-load_steps = 50
+load_steps = 40
 
 load_cases = [
     {
@@ -255,7 +184,6 @@ load_cases = [
         },
     },
 ]
-
 
 # ============================================================
 #  FREE-ENERGY DENSITY
@@ -332,7 +260,6 @@ def build_free_energy(
 
     return W, F
 
-
 # ============================================================
 #  OBJECTIVE
 # ============================================================
@@ -342,19 +269,12 @@ def build_objective(
     external_work,
     dx,
 ):
-    """Minimize the mean squared error from the prescribed U shape."""
-    target_displacement = prescribed_target_displacement()
-    displacement_error = u_field - target_displacement
-    domain_area = length * height
-
-    # The L^2 and area factors make the objective dimensionless and mesh
-    # independent. Matching the whole strip discourages tip-only motion.
+    """Maximize the average vertical displacement of the top edge."""
     return (
-        ufl.inner(displacement_error, displacement_error)
-        / (length**2 * domain_area)
-        * dx
+        -(1.0 / (width * height))
+        * u_field[1]
+        * ds_top(top_boundary_tag)
     )
-
 
 # ============================================================
 #  CONSTRAINTS
@@ -364,18 +284,17 @@ def build_constraints(
     design_variables,
     dx,
 ):
-    """Limit programmed active LCE to half of the solid strip."""
+    """Allow phi to fill the domain while satisfying the MMA interface."""
     phi_phys = design_variables["phi"].phys
     domain_volume = 1.0 * dx
 
     return {
-        "active_lce_fraction": {
+        "phi_volume": {
             "form": phi_phys * dx,
             "normalize_by": domain_volume,
-            "upper_bound": 0.80,
+            "upper_bound": 1.0,
         },
     }
-
 
 # ============================================================
 #  REQUESTED OUTPUT FIELDS
@@ -398,9 +317,7 @@ def build_output_fields(
 
     return {
         "active_director": active_director,
-        "target_displacement": prescribed_target_displacement(),
     }
-
 
 requested_output_fields = [
     "u",
@@ -408,9 +325,7 @@ requested_output_fields = [
     "phi_phys",
     "theta_phys",
     "active_director",
-    "target_displacement",
 ]
-
 
 # ============================================================
 #  SOLVER, MMA, AND OUTPUT OPTIONS
@@ -426,23 +341,20 @@ fem_options = {
     },
 }
 
-
 optimization_options = {
-    "max_iter": 125,
+    "max_iter": 100,
     "opt_tol": 1.0e-5,
-    "move": 0.03,
+    "move": 0.05,
 }
-
 
 output_options = {
     "output_dir": str(
         Path(__file__).resolve().parent
-        / "results_u_shape_morphing"
+        / "results_vertical_extension"
     ),
-    "sim_output_interval": 20,
-    "sim_image_output_interval": 126,
+    "sim_output_interval": 25,
+    "sim_image_output_interval": 101,
 }
-
 
 # ============================================================
 #  COMPLETE PROBLEM DEFINITION
@@ -466,7 +378,6 @@ problem = {
     "optimization_options": optimization_options,
     "output_options": output_options,
 }
-
 
 # ============================================================
 #  RUN

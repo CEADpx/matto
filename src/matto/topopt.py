@@ -33,11 +33,11 @@ from dolfinx import fem
 from mpi4py import MPI
 from petsc4py import PETSc
 
-from fem import form_fem
-from optimize import mma_optimizer
-from parameterize import DesignVariable
-from sensitivity import Sensitivity
-from utility import Communicator
+from .fem import form_fem
+from .optimize import mma_optimizer
+from .parameterize import DesignVariable
+from .sensitivity import Sensitivity
+from .utility import Communicator
 
 
 # ================================================================

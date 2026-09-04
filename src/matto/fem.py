@@ -33,7 +33,7 @@ from dolfinx.fem import (
 from dolfinx.mesh import locate_entities_boundary, meshtags
 from ufl import grad, inner
 
-from utility import WrapNonlinearProblem
+from .utility import WrapNonlinearProblem
 
 
 def form_fem(problem, design_variables):

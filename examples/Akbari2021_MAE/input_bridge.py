@@ -1,8 +1,7 @@
-# Garai2025 isotropic MAP bridge optimization
-# Bridge with clamped supports and central downward traction
-# Optimize structural topology and magnetic-material placement to minimize compliance.
+# Akbari2021 anisotropic MRE bridge optimization
+# Bridge with clamped supports and central downward traction; 
+# Jointly optimize structural topology, magnetic-material placement, and particle-chain direction to minimize compliance.
 
-import sys
 from pathlib import Path
 
 import numpy as np
@@ -10,15 +9,7 @@ import ufl
 from mpi4py import MPI
 from dolfinx.mesh import CellType, create_rectangle
 
-
-repository_root = Path(__file__).resolve().parents[2]
-modules_dir = repository_root / "modules"
-
-if str(modules_dir) not in sys.path:
-    sys.path.insert(0, str(modules_dir))
-
-from topopt import topopt
-
+from matto.topopt import topopt
 
 # ============================================================
 #  GEOMETRY
@@ -47,20 +38,17 @@ load_x_min = 0.5 * (width - load_width)
 load_x_max = 0.5 * (width + load_width)
 load_y_min = height - load_height
 
-
 def left_support_pad(x):
     return (
         (x[0] <= support_width)
         & (x[1] <= support_height)
     )
 
-
 def right_support_pad(x):
     return (
         (x[0] >= width - support_width)
         & (x[1] <= support_height)
     )
-
 
 def load_pad(x):
     return (
@@ -69,7 +57,6 @@ def load_pad(x):
         & (x[1] >= load_y_min)
     )
 
-
 def attachment_pads(x):
     return (
         left_support_pad(x)
@@ -77,6 +64,12 @@ def attachment_pads(x):
         | load_pad(x)
     )
 
+def initial_theta(x):
+    return np.where(
+        x[0] <= 0.5 * width,
+        np.deg2rad(15.0),
+        np.deg2rad(-15.0),
+    )
 
 # ============================================================
 #  MESH
@@ -99,36 +92,36 @@ if MPI.COMM_WORLD.rank == 0:
 else:
     mesh_serial = None
 
-
 # ============================================================
 #  MATERIAL AND INTERPOLATION PARAMETERS
 # ============================================================
 
-# All stress-like quantities use kPa. The prescribed magnetic-field
-# magnitude h represents mu0*|H| and uses T.
+# All stress-like quantities use kPa. The magnetic-field magnitude h uses T.
 material_parameters = {
-    # Garai and Haldar 20% isotropic MAP
-    "C1_Ga": 108.0,
-    "C2_Ga": 137.0,
-    "a1": 4.97,
-    "a2": 9.147 * 4.0 * np.pi * 1.0e-7,
-    "b1": 174.685,
-    "b2": 13.024 * 4.0 * np.pi * 1.0e-7,
+    # Akbari 20% anisotropic MRE
+    "A_Ak": 326.75,
+    "a_Ak": 2.785,
+    "b_Ak": 3.40,
+    "r": 64.02,
+    "s": 318.16,
+    "hs": 0.43,
+    "K_Ak": 16000.0,
 
-    # Zero-particle Sylgard 184 silicone matrix
-    "C1_sil": 270.0,
-    "C2_sil": 10.8,
+    # Zero-particle silicone matrix
+    "A_sil": 122.0,
+    "a_sil": 0.28,
+    "b_sil": 0.33,
+    "K_sil": 6000.0,
 
-    # Common nearly incompressible volumetric penalty
-    "K": 12000.0,
-    "mu0": 4.0 * np.pi * 1.0e-7,
+    # Prescribed horizontal magnetic-field direction
+    "theta_M": 0.0,
+    "delta_theta": 1.0e-6,
 
     # Material interpolation
     "p_rho": 3.0,
     "eps_rho": 1.0e-6,
     "p_phi": 1.0,
 }
-
 
 # ============================================================
 #  DESIGN-VARIABLE SPECIFICATIONS
@@ -163,7 +156,7 @@ design_variables = {
     },
 
     "phi": {
-        # phi = 0 is Sylgard 184; phi = 1 is the 20% isotropic MAP.
+        # phi = 0 is silicone; phi = 1 is the 20% anisotropic MRE.
         "active": True,
         "initial": 0.30,
         "bounds": (0.00, 1.00),
@@ -189,8 +182,24 @@ design_variables = {
             },
         ],
     },
-}
 
+    "theta": {
+        # Mirrored +/-15-degree initialization preserves bridge symmetry.
+        "active": True,
+        "initial": initial_theta,
+        "bounds": (-np.pi / 2.0, np.pi / 2.0),
+        "prescribed_value": 0.0,
+        "raw_space": ("DG", 0),
+        "physical_space": ("CG", 1),
+        "operators": [
+            {
+                "type": "density_filter",
+                "radius": 1.5,
+            },
+        ],
+        "fixed_regions": [],
+    },
+}
 
 # ============================================================
 #  BOUNDARY CONDITIONS AND LOAD CASES
@@ -234,7 +243,6 @@ load_cases = [
     },
 ]
 
-
 # ============================================================
 #  FREE-ENERGY DENSITY
 # ============================================================
@@ -244,24 +252,28 @@ def build_free_energy(
     design_variables,
     stimuli,
 ):
-    """Construct the plane-strain Garai2025 isotropic MAP energy."""
+    """Construct the plane-strain Akbari2021 MRE energy."""
     rho_phys = design_variables["rho"].phys
     phi_phys = design_variables["phi"].phys
+    theta_phys = design_variables["theta"].phys
 
     h = stimuli["h"]
 
-    C1_Ga = material_parameters["C1_Ga"]
-    C2_Ga = material_parameters["C2_Ga"]
-    a1 = material_parameters["a1"]
-    a2 = material_parameters["a2"]
-    b1 = material_parameters["b1"]
-    b2 = material_parameters["b2"]
+    A_Ak = material_parameters["A_Ak"]
+    a_Ak = material_parameters["a_Ak"]
+    b_Ak = material_parameters["b_Ak"]
+    r = material_parameters["r"]
+    s = material_parameters["s"]
+    hs = material_parameters["hs"]
+    K_Ak = material_parameters["K_Ak"]
 
-    C1_sil = material_parameters["C1_sil"]
-    C2_sil = material_parameters["C2_sil"]
+    A_sil = material_parameters["A_sil"]
+    a_sil = material_parameters["a_sil"]
+    b_sil = material_parameters["b_sil"]
+    K_sil = material_parameters["K_sil"]
 
-    K = material_parameters["K"]
-    mu0 = material_parameters["mu0"]
+    theta_M = material_parameters["theta_M"]
+    delta_theta = material_parameters["delta_theta"]
 
     p_rho = material_parameters["p_rho"]
     eps_rho = material_parameters["eps_rho"]
@@ -279,30 +291,64 @@ def build_free_energy(
     J = ufl.det(F)
     C = F.T * F
     Cbar = J**(-2.0 / 3.0) * C
-
     I1bar = ufl.tr(Cbar)
-    I2bar = 0.5 * (
-        ufl.tr(Cbar)**2
-        - ufl.tr(Cbar * Cbar)
+
+    Nhat = ufl.as_vector((
+        ufl.cos(theta_phys),
+        ufl.sin(theta_phys),
+        0.0,
+    ))
+
+    Mhat = ufl.as_vector((
+        np.cos(theta_M),
+        np.sin(theta_M),
+        0.0,
+    ))
+
+    I4bar = ufl.dot(Nhat, Cbar * Nhat)
+
+    alignment_raw = ufl.dot(Nhat, Mhat)
+    alignment = (
+        ufl.sqrt(alignment_raw**2 + delta_theta**2)
+        - delta_theta
+    ) / (
+        np.sqrt(1.0 + delta_theta**2)
+        - delta_theta
     )
 
-    # h = mu0*|H| [T], while the Garai parameters use |H| [A/m].
-    H_mag = h / mu0
+    Astar = (
+        s
+        * (1.0 - ufl.exp(-(h / (2.0 * hs))**2))
+        * alignment
+    )
 
-    zeta_2 = b1 * ufl.ln(b2 * H_mag + 1.0)
-    eta_2 = a1 * (ufl.exp(a2 * H_mag) - 1.0)
-    C2_hat = zeta_2 * ufl.atan(eta_2 * H_mag)
+    g_Ak = (
+        (1.0 / a_Ak) * ufl.exp(a_Ak * (I1bar - 3.0))
+        + b_Ak
+        * (I1bar - 2.0)
+        * (1.0 - ufl.ln(I1bar - 2.0))
+        - 1.0 / a_Ak
+        - b_Ak
+    )
 
-    W_Ga = (
-        0.5 * K * (J - 1.0)**2
-        + C1_Ga * (I1bar - 3.0)
-        + (C2_Ga + C2_hat) * (I2bar - 3.0)
+    W_Ak = (
+        0.5 * K_Ak * (J - 1.0)**2
+        + (A_Ak + Astar) * g_Ak
+        + r * (I4bar - 1.0)**2
+    )
+
+    g_sil = (
+        (1.0 / a_sil) * ufl.exp(a_sil * (I1bar - 3.0))
+        + b_sil
+        * (I1bar - 2.0)
+        * (1.0 - ufl.ln(I1bar - 2.0))
+        - 1.0 / a_sil
+        - b_sil
     )
 
     W_sil = (
-        0.5 * K * (J - 1.0)**2
-        + C1_sil * (I1bar - 3.0)
-        + C2_sil * (I2bar - 3.0)
+        0.5 * K_sil * (J - 1.0)**2
+        + A_sil * g_sil
     )
 
     rho_scale = (
@@ -312,12 +358,11 @@ def build_free_energy(
     phi_scale = phi_phys**p_phi
 
     W = rho_scale * (
-        phi_scale * W_Ga
+        phi_scale * W_Ak
         + (1.0 - phi_scale) * W_sil
     )
 
     return W, F2
-
 
 # ============================================================
 #  OBJECTIVE
@@ -330,7 +375,6 @@ def build_objective(
 ):
     """Minimize field-on compliance."""
     return external_work
-
 
 # ============================================================
 #  CONSTRAINTS
@@ -363,7 +407,6 @@ def build_constraints(
         },
     }
 
-
 # ============================================================
 #  REQUESTED OUTPUT FIELDS
 # ============================================================
@@ -373,19 +416,32 @@ def build_output_fields(
 ):
     rho_phys = design_variables["rho"].phys
     phi_phys = design_variables["phi"].phys
+    theta_phys = design_variables["theta"].phys
+
+    magnetic_material = rho_phys * phi_phys
+
+    particle_chain = magnetic_material * ufl.as_vector((
+        ufl.cos(theta_phys),
+        ufl.sin(theta_phys),
+    ))
+
+    field_alignment = magnetic_material * ufl.cos(theta_phys)
 
     return {
-        "magnetic_material": rho_phys * phi_phys,
+        "magnetic_material": magnetic_material,
+        "particle_chain": particle_chain,
+        "field_alignment": field_alignment,
     }
-
 
 requested_output_fields = [
     "u",
     "rho_phys",
     "phi_phys",
+    "theta_phys",
     "magnetic_material",
+    "particle_chain",
+    "field_alignment",
 ]
-
 
 # ============================================================
 #  SOLVER, MMA, AND OUTPUT OPTIONS
@@ -401,13 +457,11 @@ fem_options = {
     },
 }
 
-
 optimization_options = {
     "max_iter": 100,
     "opt_tol": 1.0e-5,
     "move": 0.02,
 }
-
 
 output_options = {
     "output_dir": str(
@@ -417,7 +471,6 @@ output_options = {
     "sim_output_interval": 20,
     "sim_image_output_interval": 101,
 }
-
 
 # ============================================================
 #  COMPLETE PROBLEM DEFINITION
@@ -441,7 +494,6 @@ problem = {
     "optimization_options": optimization_options,
     "output_options": output_options,
 }
-
 
 # ============================================================
 #  RUN
