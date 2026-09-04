@@ -56,9 +56,25 @@ The shared modules then construct and solve the state problem, evaluate the adjo
 
 The hMSM inputs combine a particle-reinforced hyperelastic energy with magnetic potential energy. The design fields control structural density, magnetic particle fraction, and remanent-magnetization direction. The examples are based on the joint material–structural framework developed by Galloway and Jha.
 
-- [`input_beam.py`](materials/hMSM/input_beam.py): joint `rho`–`phi`–`theta` optimization of a restorative cantilever under two opposing mechanical and magnetic load cases
-- [`input_scissor.py`](materials/hMSM/input_scissor.py): `phi`–`theta` programming of a fixed scissor-like actuator for targeted horizontal motion
-- [`input_wheel.py`](materials/hMSM/input_wheel.py): `phi`–`theta` programming of a fixed wheel to maximize counterclockwise rotation
+#### Rotational actuator
+
+[`input_wheel.py`](materials/hMSM/input_wheel.py) optimizes `phi` and `theta` in a fixed wheel geometry to increase counterclockwise rotation under an applied magnetic field.
+
+![Rotational actuator optimization](docs/assets/wheel_opt.png)
+
+#### Translational actuator
+
+[`input_scissor.py`](materials/hMSM/input_scissor.py) optimizes `phi` and `theta` in a fixed scissor-like structure to produce targeted horizontal motion while suppressing undesired vertical displacement.
+
+![Translational actuator optimization](docs/assets/scissor_opt.png)
+
+#### Restorative beam
+
+[`input_beam.py`](materials/hMSM/input_beam.py) jointly optimizes `rho`, `phi`, and `theta` under two opposing mechanical and magnetic load cases. The goal is a structure that resists mechanical loading while using magnetic actuation to restore toward its undeformed configuration.
+
+![Restorative beam setup](docs/assets/BeamOptSetup.png)
+
+![Restorative beam optimized design](docs/assets/beam_opt.png)
 
 ### Anisotropic magnetorheological elastomer
 
