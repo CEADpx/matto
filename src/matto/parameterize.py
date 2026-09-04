@@ -28,6 +28,8 @@ from dolfinx.fem import Function, form, functionspace
 from dolfinx.fem.petsc import create_matrix, assemble_matrix
 from petsc4py import PETSc
 
+from .utility import apply_petsc_options
+
 
 class DensityFilter():
     def __init__(self, comm, rho, rho_tilde, R=1.0, petsc_options={}):
@@ -52,16 +54,11 @@ class DensityFilter():
         # Construct a filtering solver
         self.solver = PETSc.KSP().create(comm)
         self.solver.setOperators(Kf_mat)
-        prefix = f"filter_solver_{id(self)}"
-        self.solver.setOptionsPrefix(prefix)
-        
-        # Apply PETSc options
-        opts = PETSc.Options()
-        opts.prefixPush(prefix)
-        for key, value in petsc_options.items():
-            opts[key] = value
-        opts.prefixPop()
-        self.solver.setFromOptions()
+        prefix = apply_petsc_options(
+            self.solver,
+            petsc_options,
+            prefix=f"filter_solver_{id(self)}",
+        )
         Kf_mat.setOptionsPrefix(prefix)
         Kf_mat.setFromOptions()
         

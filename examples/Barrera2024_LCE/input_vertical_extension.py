@@ -265,11 +265,30 @@ requested_output_fields = [
 
 fem_options = {
     "quadrature_degree": 2,
-    "petsc_options": {
-        "ksp_type": "cg",
-        "pc_type": "gamg",
-        "snes_max_it": "500",
-        "snes_error_if_not_converged": None,
+    "solver_options": {
+        "state": {
+            "atol": 1.0e-4,
+            "rtol": 1.0e-4,
+            "max_it": 50,
+            "petsc_options": {
+                "ksp_type": "preonly",
+                "pc_type": "lu",
+            },
+        },
+        "adjoint": {
+            "rtol": 1.0e-8,
+            "atol": 1.0e-12,
+            "petsc_options": {
+                "ksp_type": "preonly",
+                "pc_type": "lu",
+            },
+        },
+        "filter": {
+            "petsc_options": {
+                "ksp_type": "cg",
+                "pc_type": "gamg",
+            },
+        },
     },
 }
 

@@ -37,7 +37,7 @@ from .fem import form_fem
 from .optimize import DEFAULT_MOVE, mma_optimizer
 from .parameterize import DesignVariable
 from .sensitivity import Sensitivity
-from .utility import Communicator
+from .utility import Communicator, resolve_solver_options
 
 
 # ================================================================
@@ -449,7 +449,8 @@ def topopt(problem):
     # Design-variable construction
     # ============================================================
 
-    petsc_options = fem_options.get(
+    solver_options = resolve_solver_options(fem_options)
+    filter_petsc_options = solver_options["filter"].get(
         "petsc_options",
         {},
     )
@@ -461,7 +462,7 @@ def topopt(problem):
             name=name,
             mesh=mesh,
             settings=settings,
-            petsc_options=petsc_options,
+            petsc_options=filter_petsc_options,
         )
 
     active_design_variables = {

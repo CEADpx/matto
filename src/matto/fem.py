@@ -33,7 +33,7 @@ from dolfinx.fem import (
 from dolfinx.mesh import locate_entities_boundary, meshtags
 from ufl import grad, inner
 
-from .utility import WrapNonlinearProblem
+from .utility import WrapNonlinearProblem, resolve_solver_options
 
 
 def form_fem(problem, design_variables):
@@ -61,9 +61,15 @@ def form_fem(problem, design_variables):
 
     mesh = problem["mesh"]
 
-    fem_options = problem["fem_options"]
-    petsc_options = fem_options["petsc_options"]
-    quadrature_degree = fem_options["quadrature_degree"]
+    fem_options = problem.get(
+        "fem_options",
+        {},
+    )
+    solver_options = resolve_solver_options(fem_options)
+    quadrature_degree = fem_options.get(
+        "quadrature_degree",
+        2,
+    )
 
     dim = mesh.geometry.dim
     fdim = mesh.topology.dim - 1
@@ -427,7 +433,7 @@ def form_fem(problem, design_variables):
         u_field,
         R,
         bcs,
-        petsc_options,
+        solver_options["state"],
     )
 
     # ============================================================
@@ -599,4 +605,5 @@ def form_fem(problem, design_variables):
         "constraints": constraints,
 
         "output_fields": output_fields,
+        "solver_options": solver_options,
     }

@@ -33,6 +33,8 @@ from dolfinx.fem.petsc import (
     set_bc,
 )
 
+from .utility import apply_petsc_options
+
 
 class Sensitivity:
     """
@@ -236,6 +238,11 @@ class Sensitivity:
         # Adjoint solver
         # ============================================================
 
+        adjoint_options = fem_data.get(
+            "solver_options",
+            {},
+        ).get("adjoint", {})
+
         self.adjoint_solver = PETSc.KSP().create(
             self.comm
         )
@@ -245,13 +252,21 @@ class Sensitivity:
         )
 
         self.adjoint_solver.setTolerances(
-            rtol=1.0e-8,
-            atol=1.0e-12,
+            rtol=float(adjoint_options.get("rtol", 1.0e-8)),
+            atol=float(adjoint_options.get("atol", 1.0e-12)),
         )
 
-        self.adjoint_solver.setType("preonly")
-        self.adjoint_solver.getPC().setType("lu")
-        self.adjoint_solver.setFromOptions()
+        apply_petsc_options(
+            self.adjoint_solver,
+            adjoint_options.get(
+                "petsc_options",
+                {
+                    "ksp_type": "preonly",
+                    "pc_type": "lu",
+                },
+            ),
+            prefix=f"adjoint_ksp_{id(self)}",
+        )
 
         # ============================================================
         # Constraints

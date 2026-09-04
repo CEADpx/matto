@@ -39,7 +39,7 @@ MatTO uses an input-script interface rather than hard-coded material classes. Co
 3. A UFL free-energy density, imported from that family's `material.py`
 4. Objective and constraint forms
 5. Requested output fields
-6. Nonlinear solver, MMA, and output settings
+6. Solver settings for the state, adjoint, and filter problems, plus MMA and output settings
 
 The `matto` package then constructs and solves the state problem, evaluates the adjoint sensitivities, updates the active design variables, and writes the results.
 
@@ -141,7 +141,7 @@ top_optim/
 
 ### Example directories
 
-Each example directory contains input scripts and result summaries for one material family. Constitutive equations and material parameters currently live in the corresponding input scripts, while the `matto` package remains independent of the material family.
+Each example directory contains a family `material.py`, input scripts, and result summaries. The `matto` package remains independent of the material family. Solver settings live in `fem_options["solver_options"]` as separate `state`, `adjoint`, and `filter` blocks.
 
 ## Installation
 
@@ -190,7 +190,7 @@ The fastest route is to copy the closest existing family directory and replace o
 3. Define the load steps, load cases, and prescribed stimuli.
 4. Put the family energy in `material.py` and bind it with `build_free_energy = make_build_free_energy(material_parameters)`.
 5. Implement the objective, constraints, and optional output fields.
-6. Assemble the `problem` dictionary and call `topopt(problem)` (`from matto.topopt import topopt`).
+6. Assemble the `problem` dictionary, including `fem_options["solver_options"]` with `state`, `adjoint`, and `filter` blocks, and call `topopt(problem)` (`from matto.topopt import topopt`).
 
 New stimulus names are collected automatically from the load cases and passed to `build_free_energy(...)` as FEniCSx constants. This allows a new constitutive model to be introduced without editing the optimization core.
 

@@ -30,34 +30,173 @@ from dolfinx.fem.petsc import (create_vector, create_matrix,
                                assemble_vector, assemble_matrix, set_bc)
 import pyvista
 
-class WrapNonlinearProblem:
-    def __init__(self, u, R, bcs=[], petsc_options={}):
-        """
-        This class wraps together the nonlinear residual problem and the solver
-        """
-        self.u = u  
-        self.problem = DolfinxNonlinearProblem(R, u, bcs) 
-        self.solver = NewtonSolver(u.function_space.mesh.comm, self.problem)  #solve R(u)=0 iteratively
-       
-        self.solver.line_search = "bt"
-        self.bcs = bcs
 
-        # Convergence tolerances, stops if either is reached
-        self.solver.atol = 1e-4 # absolute residual norm
-        self.solver.rtol = 1e-4  # relative residual norm
-        self.solver.convergence_criterion = "incremental"
+DEFAULT_STATE_SOLVER = {
+    "atol": 1.0e-4,
+    "rtol": 1.0e-4,
+    "convergence_criterion": "incremental",
+    "petsc_options": {
+        "ksp_type": "preonly",
+        "pc_type": "lu",
+    },
+}
+
+DEFAULT_ADJOINT_SOLVER = {
+    "rtol": 1.0e-8,
+    "atol": 1.0e-12,
+    "petsc_options": {
+        "ksp_type": "preonly",
+        "pc_type": "lu",
+    },
+}
+
+DEFAULT_FILTER_SOLVER = {
+    "petsc_options": {},
+}
+
+
+def apply_petsc_options(petsc_object, petsc_options, prefix=None):
+    """Apply a dict of PETSc options to one prefixed solver object."""
+    if petsc_options is None:
+        petsc_options = {}
+
+    if prefix is None:
+        prefix = f"matto_{id(petsc_object)}"
+
+    petsc_object.setOptionsPrefix(prefix)
+
+    opts = PETSc.Options()
+    opts.prefixPush(prefix)
+    for key, value in petsc_options.items():
+        if value is None:
+            continue
+        opts[key] = value
+    opts.prefixPop()
+    petsc_object.setFromOptions()
+    return prefix
+
+
+def _merged_options(defaults, override):
+    merged = {
+        key: (dict(value) if isinstance(value, dict) else value)
+        for key, value in defaults.items()
+    }
+    if not override:
+        return merged
+    if not isinstance(override, dict):
+        raise TypeError("Each solver_options block must be a dictionary.")
+
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            nested = dict(merged[key])
+            nested.update(value)
+            merged[key] = nested
+        else:
+            merged[key] = value
+    return merged
+
+
+def resolve_solver_options(fem_options):
+    """Return ``{state, adjoint, filter}`` solver settings with defaults.
+
+    Accepts ``fem_options["solver_options"]``. If only the older
+    ``fem_options["petsc_options"]`` key is present, that dict is used for
+    both the state and filter solvers.
+    """
+    if fem_options is None:
+        fem_options = {}
+    if not isinstance(fem_options, dict):
+        raise TypeError("fem_options must be a dictionary.")
+
+    raw = fem_options.get("solver_options")
+    if raw is None and "petsc_options" in fem_options:
+        legacy = fem_options["petsc_options"]
+        raw = {
+            "state": {"petsc_options": legacy},
+            "filter": {"petsc_options": legacy},
+        }
+    if raw is None:
+        raw = {}
+    if not isinstance(raw, dict):
+        raise TypeError("solver_options must be a dictionary.")
+
+    unknown = set(raw) - {"state", "adjoint", "filter"}
+    if unknown:
+        raise ValueError(
+            "Unknown solver_options keys: "
+            f"{sorted(unknown)}. Expected state, adjoint, filter."
+        )
+
+    return {
+        "state": _merged_options(
+            DEFAULT_STATE_SOLVER,
+            raw.get("state"),
+        ),
+        "adjoint": _merged_options(
+            DEFAULT_ADJOINT_SOLVER,
+            raw.get("adjoint"),
+        ),
+        "filter": _merged_options(
+            DEFAULT_FILTER_SOLVER,
+            raw.get("filter"),
+        ),
+    }
+
+
+class WrapNonlinearProblem:
+    def __init__(self, u, R, bcs=None, solver_options=None):
+        """Wrap the nonlinear residual and apply the state solver settings."""
+        if bcs is None:
+            bcs = []
+        if solver_options is None:
+            solver_options = {}
+
+        self.u = u
+        self.bcs = bcs
+        self.problem = DolfinxNonlinearProblem(R, u, bcs)
+        self.solver = NewtonSolver(
+            u.function_space.mesh.comm,
+            self.problem,
+        )
+
+        self.solver.atol = float(
+            solver_options.get("atol", DEFAULT_STATE_SOLVER["atol"])
+        )
+        self.solver.rtol = float(
+            solver_options.get("rtol", DEFAULT_STATE_SOLVER["rtol"])
+        )
+        self.solver.convergence_criterion = solver_options.get(
+            "convergence_criterion",
+            DEFAULT_STATE_SOLVER["convergence_criterion"],
+        )
+        if "max_it" in solver_options:
+            self.solver.max_it = int(solver_options["max_it"])
+        if "relaxation_parameter" in solver_options:
+            self.solver.relaxation_parameter = float(
+                solver_options["relaxation_parameter"]
+            )
+        if "error_on_nonconvergence" in solver_options:
+            self.solver.error_on_nonconvergence = bool(
+                solver_options["error_on_nonconvergence"]
+            )
+        if "report" in solver_options:
+            self.solver.report = bool(solver_options["report"])
+
+        apply_petsc_options(
+            self.solver.krylov_solver,
+            solver_options.get("petsc_options", {}),
+            prefix=f"state_ksp_{id(self)}",
+        )
 
     def solve_fem(self):
-        """
-        Runs the NewtonRaphson solve to find a u that makes R(u) ≈ 0
-        """
+        """Run Newton iteration until R(u) is within the state tolerances."""
         num_its, converged = self.solver.solve(self.u)
         self.u.x.scatter_forward()
-  
+
         assert converged, f"Newton solver did not converge in {num_its} iterations"
-        
+
     def __del__(self):
-        self.solver.krylov_solver.destroy() #clean up memory
+        self.solver.krylov_solver.destroy()
         
 def plot_design(mesh, density, tag = None, path="", threshold=0.49, smooth_iter=100, pv_or_image = "pv"):
     """Initialize a plotter."""
@@ -123,16 +262,11 @@ class LinearProblem:
         # Construct a linear solver
         self.solver = PETSc.KSP().create(self.u.function_space.mesh.comm)
         self.solver.setOperators(self.lhs_mat)
-        prefix = f"linear_solver_{id(self)}"
-        self.solver.setOptionsPrefix(prefix)
-
-        # Apply PETSc options
-        opts = PETSc.Options()
-        opts.prefixPush(prefix)
-        for key, value in petsc_options.items():
-            opts[key] = value
-        opts.prefixPop()
-        self.solver.setFromOptions()
+        prefix = apply_petsc_options(
+            self.solver,
+            petsc_options,
+            prefix=f"linear_solver_{id(self)}",
+        )
         for var in [self.lhs_mat, self.rhs_vec, self.l_vec]:
             if var is not None:
                 var.setOptionsPrefix(prefix)
