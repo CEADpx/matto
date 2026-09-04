@@ -34,7 +34,7 @@ from mpi4py import MPI
 from petsc4py import PETSc
 
 from .fem import form_fem
-from .optimize import mma_optimizer
+from .optimize import DEFAULT_MOVE, mma_optimizer
 from .parameterize import DesignVariable
 from .sensitivity import Sensitivity
 from .utility import Communicator
@@ -820,7 +820,7 @@ def topopt(problem):
     move_limit = float(
         optimization_options.get(
             "move",
-            0.005,
+            DEFAULT_MOVE,
         )
     )
 

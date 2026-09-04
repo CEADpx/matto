@@ -18,9 +18,12 @@ from mpi4py import MPI
 from scipy import sparse as sparse
 from scipy.linalg import solve
 
+DEFAULT_MOVE = 0.05
+
+
 def mma_optimizer(m, n, opt_iter, xval, xmin, xmax, xold1, xold2, df0dx, fval,
-                  dfdx, low, upp, a0=1, a=None, c=None, d=None, move=0.05,
-                  asyinit=0.5, asydecr=0.7, asyincr=1.2,
+                  dfdx, low, upp, *, a0=1, a=None, c=None, d=None,
+                  move=DEFAULT_MOVE, asyinit=0.5, asydecr=0.7, asyincr=1.2,
                   low_bnd=0.002, up_bnd=1.0, albefa=0.1, feps=1e-6):
     """Solution update scheme with the method of moving asymptotes (MMA).
     The algorithm is available in https://doi.org/10.1002/nme.1620240207.
@@ -46,8 +49,10 @@ def mma_optimizer(m, n, opt_iter, xval, xmin, xmax, xold1, xold2, df0dx, fval,
         dfdx: An (m, n) array with the derivatives of the constraint functions,
             f_i(x), with respect to the variables, x_j, calculated at xval.
         low, upp: Lower and upper asymptotes from the previous iteration.
-        a0, a, c, d: Coefficients in the objective function.
-        move: Move limit of the variables, x_j.
+        a0, a, c, d: Coefficients in the objective function. Keyword-only.
+        move: Move limit of the variables, x_j. Keyword-only; default
+            ``DEFAULT_MOVE``. Passing this positionally after ``upp`` is a
+            TypeError instead of silently binding to ``a0``.
         asyinit: Initial rate of the asymptotes.
         asydecr: Decreasing rate of the asymptotes when the variables are oscillating.
         asyincr: Increasing rate of the asymptotes when the variables are monotonically updated.
