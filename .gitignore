@@ -8,7 +8,9 @@ __pycache__/
 
 # Generated optimization output
 results/
+results_*/
 output/
+*.bp
 
 # FEniCS / mesh output
 *.xdmf
