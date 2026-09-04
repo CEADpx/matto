@@ -1,7 +1,0 @@
-FINAL objective value: -2.65377573e-02
-
-FINAL maximum displacements:
-  full_activation: 2.66321790e-01
-
-FINAL constraints:
-  phi_volume: value=9.98259492e-01, residual=-1.74050834e-03
