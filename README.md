@@ -34,7 +34,7 @@ Each field can be optimized or prescribed. Its raw and physical function spaces,
 
 MatTO uses an input-script interface rather than hard-coded material classes. Constitutive energy lives next to the examples, in `examples/<family>/material.py`, not in the `matto` package. Each problem supplies:
 
-1. A mesh, boundary conditions, loads, and stimulus-dependent load cases
+1. A mesh, an optional communicator (`problem["comm"]`, default `mesh.comm`), boundary conditions, loads, and stimulus-dependent load cases
 2. Design-variable specifications
 3. A UFL free-energy density, imported from that family's `material.py`
 4. Objective and constraint forms

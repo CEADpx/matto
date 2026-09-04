@@ -244,6 +244,7 @@ output_options = {
 problem = {
     "mesh": mesh,
     "mesh_serial": mesh_serial,
+    "comm": mesh.comm,
     "material_parameters": material_parameters,
     "design_variables": design_variables,
     "boundary_conditions": boundary_conditions,

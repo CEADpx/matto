@@ -22,7 +22,7 @@ DEFAULT_MOVE = 0.05
 
 
 def mma_optimizer(m, n, opt_iter, xval, xmin, xmax, xold1, xold2, df0dx, fval,
-                  dfdx, low, upp, *, a0=1, a=None, c=None, d=None,
+                  dfdx, low, upp, *, comm, a0=1, a=None, c=None, d=None,
                   move=DEFAULT_MOVE, asyinit=0.5, asydecr=0.7, asyincr=1.2,
                   low_bnd=0.002, up_bnd=1.0, albefa=0.1, feps=1e-6):
     """Solution update scheme with the method of moving asymptotes (MMA).
@@ -49,6 +49,8 @@ def mma_optimizer(m, n, opt_iter, xval, xmin, xmax, xold1, xold2, df0dx, fval,
         dfdx: An (m, n) array with the derivatives of the constraint functions,
             f_i(x), with respect to the variables, x_j, calculated at xval.
         low, upp: Lower and upper asymptotes from the previous iteration.
+        comm: MPI communicator for the problem. Keyword-only. Use the same
+            communicator as the mesh, not a hard-coded world communicator.
         a0, a, c, d: Coefficients in the objective function. Keyword-only.
         move: Move limit of the variables, x_j. Keyword-only; default
             ``DEFAULT_MOVE``. Passing this positionally after ``upp`` is a
@@ -73,7 +75,6 @@ def mma_optimizer(m, n, opt_iter, xval, xmin, xmax, xold1, xold2, df0dx, fval,
         c = np.full(m, 1000)
     if d is None:
         d = np.zeros(m)
-    comm = MPI.COMM_WORLD
     n_global = comm.allreduce(n, op=MPI.SUM)
     epsimin = np.sqrt(m+n_global)*1e-9
 
@@ -121,13 +122,13 @@ def mma_optimizer(m, n, opt_iter, xval, xmin, xmax, xold1, xold2, df0dx, fval,
 
     # Solve the subproblem with a primal-dual interior-point approach
     x_new = solve_subproblem(m, epsimin, low, upp, alpha, beta, p0, q0,
-                             P_mat, Q_mat, a0, a, b, c, d)
+                             P_mat, Q_mat, a0, a, b, c, d, comm)
     change = comm.allreduce(np.max(np.abs(x_new-xval), initial=0), op=MPI.MAX)
     return x_new, change, low, upp
 
 
 def solve_subproblem(m, epsimin, low, upp, alpha, beta, p0, q0, P_mat, Q_mat,
-                     a0, a, b, c, d):
+                     a0, a, b, c, d, comm):
     """Solve the MMA subproblem with a primal-dual interior-point approach.
 
     Minimize:
@@ -139,7 +140,6 @@ def solve_subproblem(m, epsimin, low, upp, alpha, beta, p0, q0, P_mat, Q_mat,
         z >= 0
     """
     # Set the initial guess for variables and Lagrange multipliers
-    comm = MPI.COMM_WORLD
     eps = 1.0
     x = 0.5*(alpha+beta)
     xi = np.maximum(1.0/(x-alpha), 1.0)

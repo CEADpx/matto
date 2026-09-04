@@ -360,6 +360,7 @@ def topopt(problem):
     The input problem defines:
 
     - Mesh
+    - Communicator (optional ``comm``, default ``mesh.comm``)
     - Design variables
     - Boundary conditions
     - Load cases
@@ -443,7 +444,10 @@ def topopt(problem):
             "problem['load_steps'] must be at least 1."
         )
 
-    comm = mesh.comm
+    comm = problem.get(
+        "comm",
+        mesh.comm,
+    )
 
     # ============================================================
     # Design-variable construction
@@ -1132,6 +1136,7 @@ def topopt(problem):
             constraint_gradient_matrix,
             lower_asymptotes,
             upper_asymptotes,
+            comm=comm,
             move=move_limit,
         )
 
