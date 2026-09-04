@@ -156,6 +156,20 @@ conda activate confenx
 python -m pip install -e .
 ```
 
+## Testing
+
+Install the test extra, then run the suite from the repository root:
+
+```bash
+python -m pip install -e ".[test]"
+python -m pytest
+mpirun -n 1 python -m pytest -m examples
+mpirun -n 2 python -m pytest -m examples
+mpirun -n 4 python -m pytest -m examples
+```
+
+`python -m pytest` is the fast serial suite: MMA calling convention, a coarse-mesh finite-difference adjoint check, and the restorative-beam first-iteration pin. `-m examples` runs every example for one iteration and is the MPI check.
+
 ## Running an example
 
 Activate `confenx` and install the package in that environment before running anything (`python -m pip install -e .` from the repository root). This is required so `from matto.topopt import topopt` resolves.
