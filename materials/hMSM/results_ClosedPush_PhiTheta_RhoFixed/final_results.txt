@@ -1,7 +1,0 @@
-FINAL objective value: 1.74938496e-04
-
-FINAL maximum displacements:
-  B_right_push: 3.02605190e+00
-
-FINAL constraints:
-  phi_volume: value=1.48899213e-01, residual=-7.33857940e-03

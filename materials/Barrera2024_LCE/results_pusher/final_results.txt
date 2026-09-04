@@ -1,8 +1,0 @@
-FINAL objective value: -1.83226278e-02
-
-FINAL maximum displacements:
-  activated_pusher: 1.57208587e-01
-
-FINAL constraints:
-  rho_volume: value=5.00253708e-01, residual=5.07415171e-04
-  active_lce_fraction: value=4.99449245e-01, residual=-1.10151090e-03

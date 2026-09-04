@@ -32,25 +32,25 @@ Each field can be optimized or prescribed. Its raw and physical function spaces,
 
 ## Framework organization
 
-MatTO uses an input-script interface rather than hard-coded material classes. Each problem supplies:
+MatTO uses an input-script interface rather than hard-coded material classes. Constitutive energy lives next to the examples, in `examples/<family>/material.py`, not in the `matto` package. Each problem supplies:
 
-1. A mesh, boundary conditions, loads, and stimulus-dependent load cases
+1. A mesh, an optional communicator (`problem["comm"]`, default `mesh.comm`), boundary conditions, loads, and stimulus-dependent load cases
 2. Design-variable specifications
-3. A UFL free-energy density
+3. A UFL free-energy density, imported from that family's `material.py`
 4. Objective and constraint forms
 5. Requested output fields
-6. Nonlinear solver, MMA, and output settings
+6. Solver settings for the state, adjoint, and filter problems, plus MMA and output settings
 
-The shared modules then construct and solve the state problem, evaluate the adjoint sensitivities, update the active design variables, and write the results.
+The `matto` package then constructs and solves the state problem, evaluates the adjoint sensitivities, updates the active design variables, and writes the results.
 
 ## Supported material families
 
 | Material family | Directory | Prescribed stimulus | Available design fields | Demonstrated response |
 | --- | --- | --- | --- | --- |
-| Hard-magnetic soft material (hMSM) | [`materials/hMSM/`](materials/hMSM/) | Applied magnetic flux density `B_app` | `rho`, `phi`, `theta` | Field-driven actuation and restorative behavior |
-| Anisotropic magnetorheological elastomer | [`materials/Akbari2021_MAE/`](materials/Akbari2021_MAE/) | Magnetic field magnitude `h` | `rho`, `phi`, `theta` | Direction-dependent field stiffening |
-| Isotropic magneto-active polymer | [`materials/Garai2025_MAE/`](materials/Garai2025_MAE/) | Magnetic field magnitude `h` | `rho`, `phi` | Isotropic field stiffening |
-| Liquid crystal elastomer | [`materials/Barrera2024_LCE/`](materials/Barrera2024_LCE/) | Prescribed activation/order-parameter change | `rho`, `phi`, `theta` | Directional contraction, extension, and shape morphing |
+| Hard-magnetic soft material (hMSM) | [`examples/hMSM/`](examples/hMSM/) | Applied magnetic flux density `B_app` | `rho`, `phi`, `theta` | Field-driven actuation and restorative behavior |
+| Anisotropic magnetorheological elastomer | [`examples/Akbari2021_MAE/`](examples/Akbari2021_MAE/) | Magnetic field magnitude `h` | `rho`, `phi`, `theta` | Direction-dependent field stiffening |
+| Isotropic magneto-active polymer | [`examples/Garai2025_MAE/`](examples/Garai2025_MAE/) | Magnetic field magnitude `h` | `rho`, `phi` | Isotropic field stiffening |
+| Liquid crystal elastomer | [`examples/Barrera2024_LCE/`](examples/Barrera2024_LCE/) | Prescribed activation/order-parameter change | `rho`, `phi`, `theta` | Directional contraction, extension, and shape morphing |
 
 ### Hard-magnetic soft materials
 
@@ -58,19 +58,19 @@ The hMSM inputs combine a particle-reinforced hyperelastic energy with magnetic 
 
 #### Rotational actuator
 
-[`input_wheel.py`](materials/hMSM/input_wheel.py) optimizes `phi` and `theta` in a fixed wheel geometry to increase counterclockwise rotation under an applied magnetic field.
+[`input_wheel.py`](examples/hMSM/input_wheel.py) optimizes `phi` and `theta` in a fixed wheel geometry to increase counterclockwise rotation under an applied magnetic field.
 
 ![Rotational actuator optimization](docs/assets/wheel_opt.png)
 
 #### Translational actuator
 
-[`input_scissor.py`](materials/hMSM/input_scissor.py) optimizes `phi` and `theta` in a fixed scissor-like structure to produce targeted horizontal motion while suppressing undesired vertical displacement.
+[`input_scissor.py`](examples/hMSM/input_scissor.py) optimizes `phi` and `theta` in a fixed scissor-like structure to produce targeted horizontal motion while suppressing undesired vertical displacement.
 
 ![Translational actuator optimization](docs/assets/scissor_opt.png)
 
 #### Restorative beam
 
-[`input_beam.py`](materials/hMSM/input_beam.py) jointly optimizes `rho`, `phi`, and `theta` under two opposing mechanical and magnetic load cases. The goal is a structure that resists mechanical loading while using magnetic actuation to restore toward its undeformed configuration.
+[`input_beam.py`](examples/hMSM/input_beam.py) jointly optimizes `rho`, `phi`, and `theta` under two opposing mechanical and magnetic load cases. The goal is a structure that resists mechanical loading while using magnetic actuation to restore toward its undeformed configuration.
 
 ![Restorative beam setup](docs/assets/BeamOptSetup.png)
 
@@ -80,8 +80,8 @@ The hMSM inputs combine a particle-reinforced hyperelastic energy with magnetic 
 
 The Akbari–Khajehsaeid model describes a soft-magnetic, particle-chain-reinforced elastomer whose stiffness depends on magnetic-field magnitude and chain-to-field alignment. The implementation interpolates between silicone and a 20% anisotropic MRE and uses `theta` to represent the local particle-chain direction.
 
-- [`input_beam.py`](materials/Akbari2021_MAE/input_beam.py): magnetic-material and particle-chain optimization in a fixed cantilever
-- [`input_bridge.py`](materials/Akbari2021_MAE/input_bridge.py): joint topology, material-distribution, and particle-chain optimization of a loaded bridge
+- [`input_beam.py`](examples/Akbari2021_MAE/input_beam.py): magnetic-material and particle-chain optimization in a fixed cantilever
+- [`input_bridge.py`](examples/Akbari2021_MAE/input_bridge.py): joint topology, material-distribution, and particle-chain optimization of a loaded bridge
 
 ## Anisotropic MAE Bridge Optimization
 
@@ -93,16 +93,16 @@ The Akbari–Khajehsaeid model describes a soft-magnetic, particle-chain-reinfor
 
 The Garai–Haldar model represents an isotropic 20% magneto-active polymer with field-dependent hyperelastic stiffness. Because the material is isotropic, the included problems optimize `rho` and/or `phi` without an orientation field.
 
-- [`input_beam.py`](materials/Garai2025_MAE/input_beam.py): magnetic-material placement in a fixed cantilever
-- [`input_bridge.py`](materials/Garai2025_MAE/input_bridge.py): joint structural-topology and magnetic-material optimization of a loaded bridge
+- [`input_beam.py`](examples/Garai2025_MAE/input_beam.py): magnetic-material placement in a fixed cantilever
+- [`input_bridge.py`](examples/Garai2025_MAE/input_bridge.py): joint structural-topology and magnetic-material optimization of a loaded bridge
 
 ### Liquid crystal elastomer
 
 The Barrera et al. LCE implementation couples the strain to a prescribed change in scalar order parameter. The `phi` field selects passive/disordered versus programmed active LCE, while `theta` sets the in-plane mesogen director. In the current examples, activation is prescribed rather than obtained from a separate thermal or optical field equation.
 
-- [`input_morphing_strip.py`](materials/Barrera2024_LCE/input_morphing_strip.py): active-material and director optimization of a center-supported strip that morphs toward a U shape
-- [`input_pusher.py`](materials/Barrera2024_LCE/input_pusher.py): joint topology, active-material, and director optimization of an upward-pushing actuator
-- [`input_vertical_extension.py`](materials/Barrera2024_LCE/input_vertical_extension.py): active-material and director optimization of a clamped strip for vertical extension
+- [`input_morphing_strip.py`](examples/Barrera2024_LCE/input_morphing_strip.py): active-material and director optimization of a center-supported strip that morphs toward a U shape
+- [`input_pusher.py`](examples/Barrera2024_LCE/input_pusher.py): joint topology, active-material, and director optimization of an upward-pushing actuator
+- [`input_vertical_extension.py`](examples/Barrera2024_LCE/input_vertical_extension.py): active-material and director optimization of a clamped strip for vertical extension
 
 ## LCE U-Shape Morphing
 
@@ -113,34 +113,41 @@ The Barrera et al. LCE implementation couples the strain to a prescribed change 
 ## Repository structure
 
 ```text
-top_optim/
+MatTO
+├── docs
+│   └── assets
 ├── environment.yml
-├── modules/
-│   ├── fem.py
-│   ├── topopt.py
-│   ├── sensitivity.py
-│   ├── parameterize.py
-│   ├── optimize.py
-│   └── utility.py
-└── materials/
-    ├── hMSM/
-    ├── Akbari2021_MAE/
-    ├── Garai2025_MAE/
-    └── Barrera2024_LCE/
+├── examples
+│   ├── Akbari2021_MAE
+│   ├── Barrera2024_LCE
+│   ├── Garai2025_MAE
+│   └── hMSM
+├── LICENSE.txt
+├── pyproject.toml
+├── README.md
+├── src
+│   ├── matto
+└── tests
+    ├── __init__.py
+    ├── support.py
+    ├── test_adjoint_fd.py
+    ├── test_beam_regression.py
+    ├── test_examples_mpi.py
+    └── test_mma.py
 ```
 
-### Core modules
+### Core package (`src/matto`)
 
-- **[`modules/fem.py`](modules/fem.py):** Builds the material-independent nonlinear finite-element problem from the functions and settings supplied by an input script. It constructs the residual, tangent, objective, constraints, load cases, and derivative forms.
-- **[`modules/topopt.py`](modules/topopt.py):** Orchestrates the optimization loop, active design variables, continuation, load-case solves, sensitivity evaluation, MMA updates, convergence checks, and output writing.
-- **[`modules/sensitivity.py`](modules/sensitivity.py):** Evaluates objective and constraint derivatives using direct terms and nonlinear adjoint solves.
-- **[`modules/parameterize.py`](modules/parameterize.py):** Defines the generic `DesignVariable` representation and the density-filter and Heaviside-projection operators.
-- **[`modules/optimize.py`](modules/optimize.py):** Contains the MMA implementation used to update the design variables.
-- **[`modules/utility.py`](modules/utility.py):** Provides the nonlinear solver wrapper, MPI communication helpers, plotting, and output utilities.
+- **[`src/matto/fem.py`](src/matto/fem.py):** Builds the material-independent nonlinear finite-element problem from the functions and settings supplied by an input script. It constructs the residual, tangent, objective, constraints, load cases, and derivative forms.
+- **[`src/matto/topopt.py`](src/matto/topopt.py):** Orchestrates the optimization loop, active design variables, continuation, load-case solves, sensitivity evaluation, MMA updates, convergence checks, and output writing.
+- **[`src/matto/sensitivity.py`](src/matto/sensitivity.py):** Evaluates objective and constraint derivatives using direct terms and nonlinear adjoint solves.
+- **[`src/matto/parameterize.py`](src/matto/parameterize.py):** Defines the generic `DesignVariable` representation and the density-filter and Heaviside-projection operators.
+- **[`src/matto/optimize.py`](src/matto/optimize.py):** Contains the MMA implementation used to update the design variables.
+- **[`src/matto/utility.py`](src/matto/utility.py):** Provides the nonlinear solver wrapper, MPI communication helpers, plotting, and output utilities.
 
-### Material directories
+### Example directories
 
-Each material directory contains self-contained input scripts and example result directories. Constitutive equations and material parameters currently live in the corresponding input scripts, while the shared modules remain independent of the material family.
+Each example directory contains a family `material.py`, input scripts, and result summaries. The `matto` package remains independent of the material family. Solver settings live in `fem_options["solver_options"]` as separate `state`, `adjoint`, and `filter` blocks.
 
 ## Installation
 
@@ -152,23 +159,39 @@ cd top_optim
 git switch MatTO
 conda env create -f environment.yml
 conda activate confenx
+python -m pip install -e .
 ```
+
+## Testing
+
+Install the test extra, then run the suite from the repository root:
+
+```bash
+python -m pip install -e ".[test]"
+python -m pytest
+mpirun -n 1 python -m pytest -m examples
+mpirun -n 2 python -m pytest -m examples
+mpirun -n 4 python -m pytest -m examples
+```
+
+`python -m pytest` is the fast serial suite: MMA calling convention, a coarse-mesh finite-difference adjoint check, and the restorative-beam first-iteration pin. `-m examples` runs every example for one iteration and is the MPI check.
 
 ## Running an example
 
-Run an input script from the repository root. For example:
+Activate `confenx` and install the package in that environment before running anything (`python -m pip install -e .` from the repository root). This is required so `from matto.topopt import topopt` resolves.
 
 ```bash
 conda activate confenx
-python materials/Barrera2024_LCE/input_morphing_strip.py
+python -m pip install -e .
+python examples/Barrera2024_LCE/input_morphing_strip.py
 ```
 
 Other examples are run in the same way:
 
 ```bash
-python materials/hMSM/input_wheel.py
-python materials/Akbari2021_MAE/input_bridge.py
-python materials/Garai2025_MAE/input_beam.py
+python examples/hMSM/input_wheel.py
+python examples/Akbari2021_MAE/input_bridge.py
+python examples/Garai2025_MAE/input_beam.py
 ```
 
 The output directory is defined by `output_options` in each input script. A completed optimization writes:
@@ -180,14 +203,14 @@ The output directory is defined by `output_options` in each input script. A comp
 
 ## Adding a material model or optimization problem
 
-The fastest route is to copy the closest existing input script and replace only the problem-specific definitions:
+The fastest route is to copy the closest existing family directory and replace only the problem-specific definitions:
 
 1. Create the mesh and boundary markers.
 2. Declare the design fields and their operators.
 3. Define the load steps, load cases, and prescribed stimuli.
-4. Implement `build_free_energy(...)` and return the UFL energy density and deformation gradient.
+4. Put the family energy in `material.py` and bind it with `build_free_energy = make_build_free_energy(material_parameters)`.
 5. Implement the objective, constraints, and optional output fields.
-6. Assemble the `problem` dictionary and call `topopt(problem)`.
+6. Assemble the `problem` dictionary, including `fem_options["solver_options"]` with `state`, `adjoint`, and `filter` blocks, and call `topopt(problem)` (`from matto.topopt import topopt`).
 
 New stimulus names are collected automatically from the load cases and passed to `build_free_energy(...)` as FEniCSx constants. This allows a new constitutive model to be introduced without editing the optimization core.
 

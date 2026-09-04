@@ -1,0 +1,312 @@
+# Akbari2021 anisotropic MRE cantilever optimization
+# Cantilever under downward end traction
+# Optimize magnetic-material placement and particle-chain direction to minimize field-on compliance.
+
+from pathlib import Path
+
+import numpy as np
+import ufl
+from mpi4py import MPI
+from dolfinx.mesh import CellType, create_rectangle
+
+from matto.topopt import topopt
+from material import make_build_free_energy
+
+# ============================================================
+#  MESH
+# ============================================================
+
+mesh = create_rectangle(
+    MPI.COMM_WORLD,
+    [[0.0, 0.0], [100.0, 20.0]],
+    [150, 30],
+    cell_type=CellType.quadrilateral,
+)
+
+if MPI.COMM_WORLD.rank == 0:
+    mesh_serial = create_rectangle(
+        MPI.COMM_SELF,
+        [[0.0, 0.0], [100.0, 20.0]],
+        [150, 30],
+        cell_type=CellType.quadrilateral,
+    )
+else:
+    mesh_serial = None
+
+# ============================================================
+#  MATERIAL AND INTERPOLATION PARAMETERS
+# ============================================================
+
+# All stress-like quantities use kPa. The magnetic-field magnitude h uses T.
+material_parameters = {
+    # Akbari 20% anisotropic MRE
+    "A_Ak": 326.75,
+    "a_Ak": 2.785,
+    "b_Ak": 3.40,
+    "r": 64.02,
+    "s": 318.16,
+    "hs": 0.43,
+    "K_Ak": 16000.0,
+
+    # Zero-particle silicone matrix
+    "A_sil": 122.0,
+    "a_sil": 0.28,
+    "b_sil": 0.33,
+    "K_sil": 6000.0,
+
+    # Prescribed horizontal magnetic-field direction
+    "theta_M": 0.0,
+    "delta_theta": 1.0e-6,
+
+    # Material interpolation
+    "p_rho": 3.0,
+    "eps_rho": 1.0e-6,
+    "p_phi": 1.0,
+}
+
+# ============================================================
+#  DESIGN-VARIABLE SPECIFICATIONS
+# ============================================================
+
+design_variables = {
+    "rho": {
+        "active": False,
+        "initial": 1.0,
+        "bounds": (0.05, 1.00),
+        "prescribed_value": 1.0,
+        "raw_space": ("DG", 0),
+        "physical_space": ("CG", 1),
+        "operators": [
+            {
+                "type": "density_filter",
+                "radius": 1.0,
+            },
+        ],
+        "fixed_regions": [],
+    },
+
+    "phi": {
+        # phi = 0 is silicone; phi = 1 is the 20% anisotropic MRE.
+        "active": True,
+        "initial": 0.30,
+        "bounds": (0.00, 1.00),
+        "prescribed_value": 0.00,
+        "raw_space": ("DG", 0),
+        "physical_space": ("CG", 1),
+        "operators": [
+            {
+                "type": "density_filter",
+                "radius": 1.0,
+            },
+        ],
+        "fixed_regions": [],
+    },
+
+    "theta": {
+        # Particle-chain direction; initialized 15 degrees above +x.
+        "active": True,
+        "initial": np.deg2rad(15.0),
+        "bounds": (-np.pi / 2.0, np.pi / 2.0),
+        "prescribed_value": 0.0,
+        "raw_space": ("DG", 0),
+        "physical_space": ("CG", 1),
+        "operators": [
+            {
+                "type": "density_filter",
+                "radius": 1.0,
+            },
+        ],
+        "fixed_regions": [],
+    },
+}
+
+# ============================================================
+#  BOUNDARY CONDITIONS AND LOAD CASES
+# ============================================================
+
+boundary_conditions = [
+    {
+        "name": "clamped_left",
+        "on_boundary": lambda x: np.isclose(x[0], 0.0),
+        "value": (0.0, 0.0),
+    },
+]
+
+traction_boundaries = {
+    "out_right": lambda x: np.isclose(x[0], 100.0),
+}
+
+load_steps = 50
+
+load_cases = [
+    {
+        "name": "field_on",
+        "weight": 1.0,
+        "body_force": (0.0, 0.0),
+        "tractions": {
+            "out_right": (0.0, -0.50),
+        },
+        "stimuli": {
+            "h": 0.45,
+        },
+    },
+    {
+        # Diagnostic comparison only; this case does not affect the objective.
+        "name": "field_off",
+        "weight": 0.0,
+        "body_force": (0.0, 0.0),
+        "tractions": {
+            "out_right": (0.0, -0.50),
+        },
+        "stimuli": {
+            "h": 0.0,
+        },
+    },
+]
+
+# ============================================================
+#  FREE-ENERGY DENSITY
+# ============================================================
+
+build_free_energy = make_build_free_energy(material_parameters)
+
+# ============================================================
+#  OBJECTIVE
+# ============================================================
+
+def build_objective(
+    u_field,
+    external_work,
+    dx,
+):
+    """Minimize compliance in the field-on load case."""
+    return external_work
+
+# ============================================================
+#  CONSTRAINTS
+# ============================================================
+
+def build_constraints(
+    design_variables,
+    dx,
+):
+    phi_phys = design_variables["phi"].phys
+    domain_volume = 1.0 * dx
+
+    return {
+        "magnetic_material_fraction": {
+            "form": phi_phys * dx,
+            "normalize_by": domain_volume,
+            "upper_bound": 0.30,
+        },
+    }
+
+# ============================================================
+#  REQUESTED OUTPUT FIELDS
+# ============================================================
+
+def build_output_fields(
+    design_variables,
+):
+    phi_phys = design_variables["phi"].phys
+    theta_phys = design_variables["theta"].phys
+
+    particle_chain = phi_phys * ufl.as_vector((
+        ufl.cos(theta_phys),
+        ufl.sin(theta_phys),
+    ))
+
+    field_alignment = phi_phys * ufl.cos(theta_phys)
+
+    return {
+        "particle_chain": particle_chain,
+        "field_alignment": field_alignment,
+    }
+
+requested_output_fields = [
+    "u",
+    "rho_phys",
+    "phi_phys",
+    "theta_phys",
+    "particle_chain",
+    "field_alignment",
+]
+
+# ============================================================
+#  SOLVER, MMA, AND OUTPUT OPTIONS
+# ============================================================
+
+fem_options = {
+    "quadrature_degree": 2,
+    "solver_options": {
+        "state": {
+            "atol": 1.0e-4,
+            "rtol": 1.0e-4,
+            "max_it": 50,
+            "petsc_options": {
+                "ksp_type": "preonly",
+                "pc_type": "lu",
+            },
+        },
+        "adjoint": {
+            "rtol": 1.0e-8,
+            "atol": 1.0e-12,
+            "petsc_options": {
+                "ksp_type": "preonly",
+                "pc_type": "lu",
+            },
+        },
+        "filter": {
+            "petsc_options": {
+                "ksp_type": "cg",
+                "pc_type": "gamg",
+            },
+        },
+    },
+}
+
+optimization_options = {
+    "max_iter": 50,
+    "opt_tol": 1.0e-5,
+    "move": 0.03,
+}
+
+output_options = {
+    "output_dir": str(
+        Path(__file__).resolve().parent
+        / "results_beam"
+    ),
+    "sim_output_interval": 10,
+    "sim_image_output_interval": 51,
+}
+
+# ============================================================
+#  COMPLETE PROBLEM DEFINITION
+# ============================================================
+
+problem = {
+    "mesh": mesh,
+    "mesh_serial": mesh_serial,
+    "comm": mesh.comm,
+    "material_parameters": material_parameters,
+    "design_variables": design_variables,
+    "boundary_conditions": boundary_conditions,
+    "traction_boundaries": traction_boundaries,
+    "load_steps": load_steps,
+    "load_cases": load_cases,
+    "build_free_energy": build_free_energy,
+    "build_objective": build_objective,
+    "build_constraints": build_constraints,
+    "build_output_fields": build_output_fields,
+    "requested_output_fields": requested_output_fields,
+    "fem_options": fem_options,
+    "optimization_options": optimization_options,
+    "output_options": output_options,
+}
+
+# ============================================================
+#  RUN
+# ============================================================
+
+if __name__ == "__main__":
+    topopt(problem)

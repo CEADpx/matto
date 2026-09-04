@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "matto"
+version = "0.2.0"
+description = "Material and topology optimization of stimulus-responsive soft materials"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+authors = [
+    { name = "Ian Galloway" },
+    { name = "Prashant K. Jha" },
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q -m 'not examples'"
+markers = [
+    "examples: one-iteration run of every example (use with mpirun)",
+]

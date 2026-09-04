@@ -1,8 +1,0 @@
-FINAL objective value: 2.55795529e-01
-
-FINAL maximum displacements:
-  field_on: 2.64774396e-02
-
-FINAL constraints:
-  solid_volume: value=4.50053953e-01, residual=1.19896515e-04
-  magnetic_fraction_of_solid: value=2.99718339e-01, residual=-9.38871535e-04
