@@ -113,21 +113,27 @@ The Barrera et al. LCE implementation couples the strain to a prescribed change 
 ## Repository structure
 
 ```text
-top_optim/
-├── pyproject.toml
+MatTO
+├── docs
+│   └── assets
 ├── environment.yml
-├── src/matto/
-│   ├── fem.py
-│   ├── topopt.py
-│   ├── sensitivity.py
-│   ├── parameterize.py
-│   ├── optimize.py
-│   └── utility.py
-└── examples/
-    ├── hMSM/
-    ├── Akbari2021_MAE/
-    ├── Garai2025_MAE/
-    └── Barrera2024_LCE/
+├── examples
+│   ├── Akbari2021_MAE
+│   ├── Barrera2024_LCE
+│   ├── Garai2025_MAE
+│   └── hMSM
+├── LICENSE.txt
+├── pyproject.toml
+├── README.md
+├── src
+│   ├── matto
+└── tests
+    ├── __init__.py
+    ├── support.py
+    ├── test_adjoint_fd.py
+    ├── test_beam_regression.py
+    ├── test_examples_mpi.py
+    └── test_mma.py
 ```
 
 ### Core package (`src/matto`)
