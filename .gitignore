@@ -2,6 +2,10 @@
 __pycache__/
 *.pyc
 *.pyo
+*.egg-info/
+dist/
+build/
+.pytest_cache/
 
 # VS Code
 .vscode/
