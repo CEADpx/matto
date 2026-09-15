@@ -154,9 +154,8 @@ Each example directory contains a family `material.py`, input scripts, and resul
 The supplied Conda environment targets Linux or WSL and currently uses Python 3.13 and FEniCSx/DOLFINx 0.9.0.
 
 ```bash
-git clone https://github.com/CEADpx/top_optim.git
-cd top_optim
-git switch MatTO
+git clone https://github.com/CEADpx/matto.git
+cd matto
 conda env create -f environment.yml
 conda activate confenx
 python -m pip install -e .
@@ -235,14 +234,17 @@ The included examples are two-dimensional, nonlinear, and quasi-static. Applied 
 If you use MatTO, please cite the software and the publication associated with the material model used in your study.
 
 ```bibtex
-@software{galloway_2026_top_optim,
-  author    = {Galloway, Ian and Jha, Prashant K.},
-  title     = {CEADpx/top_optim: Joint material-structural optimization
-               framework for field-responsive soft materials},
-  year      = {2026},
-  publisher = {Zenodo},
-  doi       = {10.5281/zenodo.21266889},
-  url       = {https://doi.org/10.5281/zenodo.21266889}
+@software{galloway2026matto,
+  author       = {Galloway, Ian and
+                  Jha, Prashant K},
+  title        = {CEADpx/matto - Joint material and topology
+                   optimization of stimulus-responsive soft materials
+                  },
+  month        = sep,
+  year         = 2026,
+  publisher    = {Zenodo},
+  doi          = {10.5281/zenodo.22761145},
+  url          = {https://doi.org/10.5281/zenodo.22761145},
 }
 ```
 
