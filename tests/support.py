@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import importlib.util
-import sys
 from pathlib import Path
 
 import numpy as np
@@ -11,28 +9,15 @@ from dolfinx.mesh import CellType, create_rectangle
 from mpi4py import MPI
 
 from matto.driver import OptimizationDriver
+from matto.materials import HardMagneticSoftMaterial
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-HMSM_MATERIAL = REPO_ROOT / "examples" / "hMSM" / "material.py"
 
 BEAM_LENGTH = 100.0
 BEAM_HEIGHT = 20.0
 
 # First printed objective of the committed 150 x 30 beam, load_steps=50.
 FULL_BEAM_FIRST_OBJECTIVE = 7.151568e02
-
-
-def load_hmsm_material():
-    name = "matto_test_hmsm_material"
-    module = sys.modules.get(name)
-    if module is not None:
-        return module
-
-    spec = importlib.util.spec_from_file_location(name, HMSM_MATERIAL)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    sys.modules[name] = module
-    return module
 
 
 def _design_variable_specs():
@@ -118,8 +103,7 @@ def build_beam_problem(
         "mu0": 1.256e3,
         "B_rem_mag": 200.0,
     }
-    material = load_hmsm_material()
-    build_free_energy = material.make_build_free_energy(material_parameters)
+    material = HardMagneticSoftMaterial(**material_parameters)
 
     def build_objective(u_field, external_work, dx):
         return external_work
@@ -177,7 +161,7 @@ def build_beam_problem(
                 "stimuli": {"B_app": (0.0, -25.0)},
             },
         ],
-        "build_free_energy": build_free_energy,
+        "material": material,
         "build_objective": build_objective,
         "build_constraints": build_constraints,
         "build_output_fields": build_output_fields,

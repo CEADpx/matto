@@ -32,11 +32,11 @@ Each field can be optimized or prescribed. Its raw and physical function spaces,
 
 ## Framework organization
 
-MatTO uses an input-script interface rather than hard-coded material classes. Constitutive energy lives next to the examples, in `examples/<family>/material.py`, not in the `matto` package. Each problem supplies:
+MatTO uses an input-script interface. A material is a small class declaring the design fields it reads, the stimuli it needs, its parameters, and a free-energy density `W(F; fields, stimuli)`; the package differentiates it for the stress. The four supported families live in `matto.materials`, and a new one can be defined in the package, next to the input scripts, or in the input script itself. Each problem supplies:
 
 1. A mesh, an optional communicator (`problem["comm"]`, default `mesh.comm`), boundary conditions, loads, and stimulus-dependent load cases
 2. Design-variable specifications
-3. A UFL free-energy density, imported from that family's `material.py`
+3. A material, e.g. `HardMagneticSoftMaterial(**material_parameters)`
 4. Objective and constraint forms
 5. Requested output fields
 6. Solver settings for the state, adjoint, and filter problems, plus MMA and output settings
@@ -140,6 +140,7 @@ MatTO
 
 - **[`src/matto/state.py`](src/matto/state.py):** `StateProblem`, the material-independent nonlinear finite-element problem built from the functions and settings supplied by an input script: displacement space, boundary conditions, load constants, residual, objective, constraints and derivative forms.
 - **[`src/matto/driver.py`](src/matto/driver.py):** `OptimizationDriver`, which orchestrates the optimization loop: active design variables, continuation, load-case solves, sensitivity evaluation, MMA updates, convergence checks, and output writing.
+- **[`src/matto/materials/`](src/matto/materials/):** The `Material` contract, the four supported models (`hmsm`, `lce`, `mae`, `mae_aniso`), shared kinematics and interpolation helpers, and `check_material` for validating a new model.
 - **[`src/matto/sensitivity.py`](src/matto/sensitivity.py):** Evaluates objective and constraint derivatives using direct terms and nonlinear adjoint solves.
 - **[`src/matto/operators.py`](src/matto/operators.py):** Defines the generic `DesignVariable` representation and the operator chain (Helmholtz filter, Heaviside projection) that maps raw design fields to physical ones and carries sensitivities back.
 - **[`src/matto/optimize.py`](src/matto/optimize.py):** Contains the MMA implementation used to update the design variables.
@@ -207,11 +208,11 @@ The fastest route is to copy the closest existing family directory and replace o
 1. Create the mesh and boundary markers.
 2. Declare the design fields and their operators.
 3. Define the load steps, load cases, and prescribed stimuli.
-4. Put the family energy in `material.py` and bind it with `build_free_energy = make_build_free_energy(material_parameters)`.
+4. Pick a material from `matto.materials`, or subclass `matto.materials.Material` and write its `energy()`; run `check_material()` on a new one.
 5. Implement the objective, constraints, and optional output fields.
 6. Assemble the `problem` dictionary, including `fem_options["solver_options"]` with `state`, `adjoint`, and `filter` blocks, and run it with `OptimizationDriver(problem).run()` (`from matto.driver import OptimizationDriver`).
 
-New stimulus names are collected automatically from the load cases and passed to `build_free_energy(...)` as FEniCSx constants. This allows a new constitutive model to be introduced without editing the optimization core.
+Stimulus names and shapes are collected from the load cases and checked against what the material declares, so a new constitutive model is introduced without editing the optimization core.
 
 ## Current scope
 

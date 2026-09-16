@@ -334,23 +334,45 @@ class StateProblem:
     # ============================================================
 
     def _build_free_energy(self):
-        build_free_energy = self.problem["build_free_energy"]
+        self.material = self.problem.get("material")
 
-        self.W, self.F = build_free_energy(
-            self.u_field,
-            self.design_variables,
-            self.stimuli,
-        )
+        if self.material is not None:
+            # A Material declares what it reads; check that before any
+            # form is built.
+            self.material.check_requirements(self.design_variables, self.stimuli)
+
+            self.F = ufl.variable(ufl.Identity(self.dim) + grad(self.u_field))
+            fields = {
+                name: self.design_variables[name].phys
+                for name in self.material.fields
+            }
+            stimuli = {name: self.stimuli[name] for name in self.material.stimuli}
+            self.W = self.material.energy(self.F, fields, stimuli)
+
+        elif "build_free_energy" in self.problem:
+            # The callback form: the input file builds F itself and
+            # returns (W, F).
+            self.W, self.F = self.problem["build_free_energy"](
+                self.u_field,
+                self.design_variables,
+                self.stimuli,
+            )
+
+        else:
+            raise KeyError(
+                "Problem definition needs a 'material' (a matto.materials."
+                "Material) or a 'build_free_energy' callback."
+            )
 
         if self.W.ufl_shape != ():
             raise ValueError(
-                "build_free_energy() must return a scalar energy density W."
+                "The free-energy density W must be a scalar."
             )
 
         if self.F.ufl_shape != grad(self.test_function).ufl_shape:
             raise ValueError(
-                "The deformation-gradient variable returned by "
-                "build_free_energy() must have the same shape as grad(v)."
+                "The deformation-gradient variable must have the same "
+                "shape as grad(v)."
             )
 
         # First Piola-Kirchhoff stress

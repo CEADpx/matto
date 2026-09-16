@@ -77,7 +77,6 @@ def _run_example(script, output_dir):
     matto.OptimizationDriver = OneIteration
 
     script_path = (REPO_ROOT / script).resolve()
-    sys.modules.pop("material", None)
     sys.path.insert(0, str(script_path.parent))
     try:
         runpy.run_path(str(script_path), run_name="__main__")
@@ -86,8 +85,7 @@ def _run_example(script, output_dir):
         matto.OptimizationDriver = original
         if sys.path and sys.path[0] == str(script_path.parent):
             sys.path.pop(0)
-        sys.modules.pop("material", None)
-
+    
     return captured["text"]
 
 

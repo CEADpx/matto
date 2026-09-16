@@ -9,7 +9,7 @@ from mpi4py import MPI
 from dolfinx.mesh import CellType, create_rectangle
 
 from matto.driver import OptimizationDriver
-from material import make_build_free_energy
+from matto.materials import LiquidCrystalElastomer
 
 # ============================================================
 #  GEOMETRY, TARGET SHAPE, AND MESH
@@ -243,7 +243,7 @@ load_cases = [
 #  FREE-ENERGY DENSITY
 # ============================================================
 
-build_free_energy = make_build_free_energy(material_parameters)
+material = LiquidCrystalElastomer(**material_parameters)
 
 # ============================================================
 #  OBJECTIVE
@@ -382,7 +382,7 @@ problem = {
     "traction_boundaries": traction_boundaries,
     "load_steps": load_steps,
     "load_cases": load_cases,
-    "build_free_energy": build_free_energy,
+    "material": material,
     "build_objective": build_objective,
     "build_constraints": build_constraints,
     "build_output_fields": build_output_fields,
