@@ -100,7 +100,10 @@ class Operator(ABC):
         side and return the corresponding list on the input side.
 
         Entries may be None and are passed through untouched. The
-        returned vectors may alias or overwrite the given ones.
+        returned vectors may alias or overwrite the given ones, or be
+        work vectors owned by the operator that stay valid only until
+        its next backward() call. Callers that need to keep a result
+        copy it.
         """
 
     def update(self, iteration):
@@ -216,6 +219,10 @@ class HelmholtzFilter(Operator):
         self.kernel = kernel
         self.output_wrap = la.create_petsc_vector_wrap(self.output.x)
 
+        # One input-side work vector per gradient slot, allocated the
+        # first time backward() is called with that many gradients.
+        self._results = []
+
     @classmethod
     def from_spec(cls, spec, input_field, output_field, context):
         if output_field is None:
@@ -251,15 +258,19 @@ class HelmholtzFilter(Operator):
 
     def backward(self, gradients):
         kernel = self.kernel
+
+        while len(self._results) < len(gradients):
+            self._results.append(self.input.x.petsc_vec.copy())
+
         values = []
-        for gradient in gradients:
+        for slot, gradient in enumerate(gradients):
             if gradient is None:
                 values.append(None)
                 continue
 
             kernel.solver.solve(gradient, kernel.af_wrap)
             kernel.af.x.scatter_forward()
-            result = self.input.x.petsc_vec.copy()
+            result = self._results[slot]
             kernel.T_mat.multTranspose(kernel.af.x.petsc_vec, result)
             values.append(result)
         return values
@@ -671,7 +682,9 @@ class DesignVariable:
                 for gradient in physical_gradients
             ]
 
-        # Operators may work on the vectors in place, so pass them copies.
+        # Operators may work on the vectors in place, so pass them
+        # copies; and the arrays returned at the end are copies because
+        # the last operator may have returned its own work vectors.
         gradients = [
             (
                 gradient.copy()
