@@ -12,7 +12,7 @@ from mpi4py import MPI
 from petsc4py import PETSc
 
 from matto.fem import form_fem
-from matto.parameterize import DesignVariable
+from matto.operators import DesignVariable
 from matto.sensitivity import Sensitivity
 from matto.topopt import (
     _owned_gradient,

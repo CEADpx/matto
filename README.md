@@ -141,7 +141,7 @@ MatTO
 - **[`src/matto/fem.py`](src/matto/fem.py):** Builds the material-independent nonlinear finite-element problem from the functions and settings supplied by an input script. It constructs the residual, tangent, objective, constraints, load cases, and derivative forms.
 - **[`src/matto/topopt.py`](src/matto/topopt.py):** Orchestrates the optimization loop, active design variables, continuation, load-case solves, sensitivity evaluation, MMA updates, convergence checks, and output writing.
 - **[`src/matto/sensitivity.py`](src/matto/sensitivity.py):** Evaluates objective and constraint derivatives using direct terms and nonlinear adjoint solves.
-- **[`src/matto/parameterize.py`](src/matto/parameterize.py):** Defines the generic `DesignVariable` representation and the density-filter and Heaviside-projection operators.
+- **[`src/matto/operators.py`](src/matto/operators.py):** Defines the generic `DesignVariable` representation and the operator chain (Helmholtz filter, Heaviside projection) that maps raw design fields to physical ones and carries sensitivities back.
 - **[`src/matto/optimize.py`](src/matto/optimize.py):** Contains the MMA implementation used to update the design variables.
 - **[`src/matto/utility.py`](src/matto/utility.py):** Provides the nonlinear solver wrapper, MPI communication helpers, plotting, and output utilities.
 

@@ -35,7 +35,7 @@ from petsc4py import PETSc
 
 from .fem import form_fem
 from .optimize import DEFAULT_MOVE, mma_optimizer
-from .parameterize import DesignVariable
+from .operators import DesignVariable
 from .sensitivity import Sensitivity
 from .utility import Communicator, resolve_solver_options
 
@@ -850,8 +850,7 @@ def topopt(problem):
 
     def continuation_complete():
         return all(
-            variable.heaviside is None
-            or variable.beta >= variable.beta_max
+            variable.continuation_complete()
             for variable in active_design_variables.values()
         )
         

@@ -43,7 +43,7 @@ class Sensitivity:
 
     This class does not know anything about rho, phi, theta, or any
     particular material model. It works with whichever active design
-    variables were created by parameterize.py.
+    variables were created by operators.py.
 
     The returned physical-field gradients are later passed through each
     design variable's backward operator chain:
