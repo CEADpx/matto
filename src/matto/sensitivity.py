@@ -38,21 +38,23 @@ from .utility import apply_petsc_options
 
 class Sensitivity:
     """
-    Compute objective and constraint sensitivities with respect to the
-    physical design-variable fields.
+    Objective and constraint sensitivities with respect to the physical fields.
 
-    This class does not know anything about rho, phi, theta, or any
-    particular material model. It works with whichever active design
-    variables were created by operators.py; the forms come from
-    state.py.
+    Nothing here is specific to rho, phi, theta, or any material model.
+    It works with whichever active design variables were created by
+    operators.py; the forms come from state.py.
 
-    The returned physical-field gradients are later passed through each
-    design variable's backward operator chain:
+    Seen as one reverse sweep,
 
-        physical gradient
-            -> projection derivative
-            -> filter adjoint
-            -> raw-design gradient
+        raw -> operators -> phys -> state solve -> u -> objective -> J,
+
+    this class is the transpose of the last two stages: it forms dJ/du,
+    solves the adjoint for lambda, and returns dJ/dphys for every active
+    field. DesignVariable.backward then carries that through the
+    operator chain to dJ/draw.
+
+    The gradient vectors returned by evaluate() are work vectors owned
+    by this object and are overwritten by the next evaluate().
     """
 
     def __init__(self, comm, state, objective_form, constraints):
@@ -62,7 +64,7 @@ class Sensitivity:
         # FEM data
         # ============================================================
 
-        self.fem_problem = state.nonlinear_problem
+        self.bcs = state.bcs
 
         self.u_field = state.u_field
         self.lambda_field = state.lambda_field
@@ -154,14 +156,27 @@ class Sensitivity:
         self.objective_gradient_forms = {}
         self.objective_gradient_vectors = {}
 
-        self.internal_force_gradient_forms = {}
-        self.internal_force_gradient_matrices = {}
-
+        self.adjoint_contribution_forms = {}
         self.adjoint_contribution_vectors = {}
+
+        # lambda^T f_int as a functional; its derivative with respect to
+        # a design field is the vector (df_int/d design)^T lambda, so no
+        # design Jacobian matrix is ever assembled.
+        adjoint_work_ufl = ufl.action(
+            self.internal_force_ufl,
+            self.lambda_field,
+        )
 
         for name, variable in self.active_design_variables.items():
             physical_field = variable.phys
             physical_space = physical_field.function_space
+
+            # One work vector per field for the objective gradient,
+            # whether or not the objective depends on it directly; the
+            # adjoint contribution is added into the same vector.
+            self.objective_gradient_vectors[name] = (
+                physical_field.x.petsc_vec.copy()
+            )
 
             # --------------------------------------------------------
             # Direct objective derivative
@@ -184,56 +199,37 @@ class Sensitivity:
                 )
 
                 self.objective_gradient_forms[name] = gradient_form
-                self.objective_gradient_vectors[name] = create_vector(
-                    gradient_form
-                )
 
             else:
                 self.objective_gradient_forms[name] = None
-                self.objective_gradient_vectors[name] = None
 
             # --------------------------------------------------------
-            # Internal-force derivative
+            # Adjoint contribution, (df_int / d design)^T lambda
             # --------------------------------------------------------
 
             if self._depends_on(
                 self.internal_force_ufl,
                 physical_field,
             ):
-                design_trial = ufl.TrialFunction(
+                design_test = ufl.TestFunction(
                     physical_space
                 )
 
-                derivative_form = form(
+                self.adjoint_contribution_forms[name] = form(
                     ufl.derivative(
-                        self.internal_force_ufl,
+                        adjoint_work_ufl,
                         physical_field,
-                        design_trial,
+                        design_test,
                     )
                 )
 
-                self.internal_force_gradient_forms[name] = (
-                    derivative_form
-                )
-
-                self.internal_force_gradient_matrices[name] = (
-                    create_matrix(derivative_form)
+                self.adjoint_contribution_vectors[name] = (
+                    physical_field.x.petsc_vec.copy()
                 )
 
             else:
-                self.internal_force_gradient_forms[name] = None
-                self.internal_force_gradient_matrices[name] = None
-
-            # Work vector for:
-
-            #     (df / d design)^T * lambda
-
-            adjoint_vector = physical_field.x.petsc_vec.copy()
-            adjoint_vector.zeroEntries()
-
-            self.adjoint_contribution_vectors[name] = (
-                adjoint_vector
-            )
+                self.adjoint_contribution_forms[name] = None
+                self.adjoint_contribution_vectors[name] = None
 
         # ============================================================
         # Adjoint solver
@@ -256,13 +252,7 @@ class Sensitivity:
 
         apply_petsc_options(
             self.adjoint_solver,
-            adjoint_options.get(
-                "petsc_options",
-                {
-                    "ksp_type": "preonly",
-                    "pc_type": "lu",
-                },
-            ),
+            adjoint_options.get("petsc_options", {}),
             prefix=f"adjoint_ksp_{id(self)}",
         )
 
@@ -313,16 +303,9 @@ class Sensitivity:
         )
 
     @staticmethod
-    def _zero_like(function):
-        vector = function.x.petsc_vec.copy()
-        vector.zeroEntries()
-
-        vector.ghostUpdate(
-            addv=PETSc.InsertMode.INSERT,
-            mode=PETSc.ScatterMode.FORWARD,
-        )
-
-        return vector
+    def _zero_vector(vector):
+        with vector.localForm() as local:
+            local.set(0.0)
 
     @staticmethod
     def _assemble_into_vector(vector, compiled_form):
@@ -347,38 +330,10 @@ class Sensitivity:
         constraint_name,
         specification,
     ):
-        if not isinstance(specification, dict):
-            raise TypeError(
-                f"Constraint '{constraint_name}' must be a dictionary."
-            )
-
-        required_keys = {
-            "form",
-            "normalize_by",
-            "upper_bound",
-        }
-
-        missing_keys = required_keys.difference(
-            specification
-        )
-
-        if missing_keys:
-            raise KeyError(
-                f"Constraint '{constraint_name}' is missing: "
-                f"{sorted(missing_keys)}"
-            )
-
+        # The driver has already checked the keys and the bound.
         constraint_ufl = specification["form"]
         normalization_ufl = specification["normalize_by"]
-        upper_bound = float(
-            specification["upper_bound"]
-        )
-
-        if upper_bound <= 0.0:
-            raise ValueError(
-                f"Constraint '{constraint_name}' must have a "
-                "positive upper_bound."
-            )
+        upper_bound = float(specification["upper_bound"])
 
         # State-dependent constraints would require their own adjoint
         # solves. They are intentionally not supported yet.
@@ -439,6 +394,10 @@ class Sensitivity:
         ):
             physical_field = variable.phys
 
+            gradient_vectors[variable_name] = (
+                physical_field.x.petsc_vec.copy()
+            )
+
             if self._depends_on(
                 constraint_ufl,
                 physical_field,
@@ -447,7 +406,7 @@ class Sensitivity:
                     physical_field.function_space
                 )
 
-                gradient_form = form(
+                gradient_forms[variable_name] = form(
                     ufl.derivative(
                         constraint_ufl,
                         physical_field,
@@ -455,17 +414,8 @@ class Sensitivity:
                     )
                 )
 
-                gradient_forms[variable_name] = (
-                    gradient_form
-                )
-
-                gradient_vectors[variable_name] = (
-                    create_vector(gradient_form)
-                )
-
             else:
                 gradient_forms[variable_name] = None
-                gradient_vectors[variable_name] = None
 
         self.constraints[constraint_name] = {
             "form": constraint_form,
@@ -482,25 +432,19 @@ class Sensitivity:
     def _assemble_direct_objective_gradients(self):
         gradients = {}
 
-        for name, variable in (
-            self.active_design_variables.items()
-        ):
+        for name in self.active_design_variables:
             gradient_form = self.objective_gradient_forms[name]
             work_vector = self.objective_gradient_vectors[name]
 
             if gradient_form is None:
-                gradients[name] = self._zero_like(
-                    variable.phys
+                self._zero_vector(work_vector)
+            else:
+                self._assemble_into_vector(
+                    work_vector,
+                    gradient_form,
                 )
 
-                continue
-
-            self._assemble_into_vector(
-                work_vector,
-                gradient_form,
-            )
-
-            gradients[name] = work_vector.copy()
+            gradients[name] = work_vector
 
         return gradients
 
@@ -522,7 +466,7 @@ class Sensitivity:
         # Adjoint values must be zero on displacement Dirichlet DOFs.
         set_bc(
             self.dobjective_du_vector,
-            self.fem_problem.bcs,
+            self.bcs,
             alpha=0.0,
         )
 
@@ -537,7 +481,7 @@ class Sensitivity:
         assemble_matrix(
             self.dfdu_matrix,
             self.dfdu_form,
-            bcs=self.fem_problem.bcs,
+            bcs=self.bcs,
         )
 
         self.dfdu_matrix.assemble()
@@ -574,40 +518,16 @@ class Sensitivity:
         objective_gradients,
     ):
         for name in self.active_design_variables:
-            derivative_form = (
-                self.internal_force_gradient_forms[name]
-            )
+            contribution_form = self.adjoint_contribution_forms[name]
 
-            derivative_matrix = (
-                self.internal_force_gradient_matrices[name]
-            )
-
-            if derivative_form is None:
+            if contribution_form is None:
                 continue
 
-            derivative_matrix.zeroEntries()
+            adjoint_vector = self.adjoint_contribution_vectors[name]
 
-            assemble_matrix(
-                derivative_matrix,
-                derivative_form,
-            )
-
-            derivative_matrix.assemble()
-
-            adjoint_vector = (
-                self.adjoint_contribution_vectors[name]
-            )
-
-            adjoint_vector.zeroEntries()
-
-            derivative_matrix.multTranspose(
-                self.lambda_field.x.petsc_vec,
+            self._assemble_into_vector(
                 adjoint_vector,
-            )
-
-            adjoint_vector.ghostUpdate(
-                addv=PETSc.InsertMode.ADD,
-                mode=PETSc.ScatterMode.REVERSE,
+                contribution_form,
             )
 
             objective_gradients[name].axpy(
@@ -680,25 +600,15 @@ class Sensitivity:
                 )
 
                 if gradient_form is None:
-                    variable_gradients[variable_name] = (
-                        self._zero_like(variable.phys)
+                    self._zero_vector(work_vector)
+                else:
+                    self._assemble_into_vector(
+                        work_vector,
+                        gradient_form,
                     )
+                    work_vector.scale(gradient_scale)
 
-                    continue
-
-                self._assemble_into_vector(
-                    work_vector,
-                    gradient_form,
-                )
-
-                gradient_vector = work_vector.copy()
-                gradient_vector.scale(
-                    gradient_scale
-                )
-
-                variable_gradients[variable_name] = (
-                    gradient_vector
-                )
+                variable_gradients[variable_name] = work_vector
 
             constraint_gradients[constraint_name] = (
                 variable_gradients
