@@ -326,7 +326,11 @@ class Sensitivity:
 
     @staticmethod
     def _assemble_into_vector(vector, compiled_form):
-        vector.zeroEntries()
+        # Zero the ghost slots too: assembly adds into them and the
+        # reverse scatter below sends them to their owners, so anything
+        # left there from the last call would be counted again.
+        with vector.localForm() as local:
+            local.set(0.0)
 
         assemble_vector(
             vector,
