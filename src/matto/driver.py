@@ -322,11 +322,9 @@ class OptimizationDriver:
         self.active_names = list(self.active_design_variables)
 
         if self.comm.rank == 0:
-            print(
-                "[matto] Active design variables: "
-                f"{self.active_names}",
-                flush=True,
-            )
+            print("[matto] design variables:", flush=True)
+            for variable in self.design_variables.values():
+                print(f"  {variable.describe()}", flush=True)
 
     # ============================================================
     # FEM and sensitivity construction

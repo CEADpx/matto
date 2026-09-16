@@ -117,6 +117,10 @@ class Operator(ABC):
         """True once the continuation schedule, if any, has run out."""
         return True
 
+    def describe(self):
+        """One short phrase for the startup log."""
+        return type(self).__name__
+
 
 class Identity(Operator):
     """Copy input to output. Used when a variable has no operators."""
@@ -222,6 +226,9 @@ class HelmholtzFilter(Operator):
             values.append(self.vec_s0.copy())
         return values
 
+    def describe(self):
+        return f"HelmholtzFilter(R={self.radius:g})"
+
 
 class HeavisideProjection(Operator):
     """
@@ -308,6 +315,16 @@ class HeavisideProjection(Operator):
             if gradient is not None:
                 gradient.array *= self.dphys
         return gradients
+
+    def describe(self):
+        if self.update_interval > 0 and self.beta_max > self.beta:
+            schedule = (
+                f"beta {self.beta:g} -> {self.beta_max:g} "
+                f"every {self.update_interval}"
+            )
+        else:
+            schedule = f"beta={self.beta:g}"
+        return f"HeavisideProjection({schedule}, eta={self.eta:g})"
 
 
 # Input-file "type" -> operator class. Extend this from a material file
@@ -534,6 +551,22 @@ class DesignVariable:
         self.raw.x.petsc_vec.ghostUpdate(
             addv=PETSc.InsertMode.INSERT,
             mode=PETSc.ScatterMode.FORWARD,
+        )
+
+    def describe(self):
+        """The chain as one line, for the startup log."""
+
+        def space(spec):
+            return f"{spec[0]}{spec[1]}"
+
+        if not self.active:
+            return f"{self.name}: inactive, prescribed"
+
+        steps = " -> ".join(operator.describe() for operator in self.operators)
+
+        return (
+            f"{self.name}: raw ({space(self.raw_space_spec)}) -> {steps} "
+            f"-> phys ({space(self.physical_space_spec)})"
         )
 
     def continuation_complete(self):
