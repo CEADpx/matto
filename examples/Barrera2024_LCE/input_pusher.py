@@ -14,7 +14,7 @@ from dolfinx.mesh import (
     meshtags,
 )
 
-from matto.topopt import topopt
+from matto.driver import OptimizationDriver
 from material import make_build_free_energy
 
 # ============================================================
@@ -296,7 +296,7 @@ def build_objective(
     dx,
 ):
     """Maximize average upward displacement of the output boundary."""
-    # topopt minimizes. Apply all scalar normalization before ds creates the
+    # the driver minimizes. Apply all scalar normalization before ds creates the
     # completed UFL Form.
     return (
         -(1.0 / (output_width * height))
@@ -446,4 +446,4 @@ problem = {
 # ============================================================
 
 if __name__ == "__main__":
-    topopt(problem)
+    OptimizationDriver(problem).run()

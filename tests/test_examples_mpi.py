@@ -50,25 +50,31 @@ def _parse_first_objective(text):
 
 
 def _run_example(script, output_dir):
-    topopt_mod = importlib.import_module("matto.topopt")
-    original = topopt_mod.topopt
+    driver_mod = importlib.import_module("matto.driver")
+    original = driver_mod.OptimizationDriver
     captured = {"text": ""}
 
-    def wrapped(problem):
-        options = problem.setdefault("optimization_options", {})
-        options["max_iter"] = 1
-        output_options = problem.setdefault("output_options", {})
-        output_options["output_dir"] = str(output_dir)
-        output_options["sim_output_interval"] = 10**9
-        output_options["sim_image_output_interval"] = 10**9
-        buffer = io.StringIO()
-        with contextlib.redirect_stdout(buffer):
-            original(problem)
-        captured["text"] = buffer.getvalue()
+    class OneIteration(original):
+        """Same driver, but one iteration into a temporary directory."""
 
-    topopt_mod.topopt = wrapped
+        def __init__(self, problem):
+            options = problem.setdefault("optimization_options", {})
+            options["max_iter"] = 1
+            output_options = problem.setdefault("output_options", {})
+            output_options["output_dir"] = str(output_dir)
+            output_options["sim_output_interval"] = 10**9
+            output_options["sim_image_output_interval"] = 10**9
+            super().__init__(problem)
+
+        def run(self):
+            buffer = io.StringIO()
+            with contextlib.redirect_stdout(buffer):
+                super().run()
+            captured["text"] = buffer.getvalue()
+
+    driver_mod.OptimizationDriver = OneIteration
     import matto
-    matto.topopt = wrapped
+    matto.OptimizationDriver = OneIteration
 
     script_path = (REPO_ROOT / script).resolve()
     sys.modules.pop("material", None)
@@ -76,8 +82,8 @@ def _run_example(script, output_dir):
     try:
         runpy.run_path(str(script_path), run_name="__main__")
     finally:
-        topopt_mod.topopt = original
-        matto.topopt = original
+        driver_mod.OptimizationDriver = original
+        matto.OptimizationDriver = original
         if sys.path and sys.path[0] == str(script_path.parent):
             sys.path.pop(0)
         sys.modules.pop("material", None)

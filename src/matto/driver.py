@@ -313,7 +313,7 @@ class OptimizationDriver:
 
         if self.comm.rank == 0:
             print(
-                "[topopt] Active design variables: "
+                "[matto] Active design variables: "
                 f"{self.active_names}",
                 flush=True,
             )

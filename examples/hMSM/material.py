@@ -4,7 +4,7 @@ import ufl
 
 
 def make_build_free_energy(material_parameters):
-    """Return the ``build_free_energy`` callback expected by ``topopt``."""
+    """Return the ``build_free_energy`` callback expected by ``OptimizationDriver``."""
 
     def build_free_energy(u_field, design_variables, stimuli):
         rho_phys = design_variables["rho"].phys

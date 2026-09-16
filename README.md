@@ -139,7 +139,7 @@ MatTO
 ### Core package (`src/matto`)
 
 - **[`src/matto/state.py`](src/matto/state.py):** `StateProblem`, the material-independent nonlinear finite-element problem built from the functions and settings supplied by an input script: displacement space, boundary conditions, load constants, residual, objective, constraints and derivative forms.
-- **[`src/matto/driver.py`](src/matto/driver.py):** `OptimizationDriver`, which orchestrates the optimization loop: active design variables, continuation, load-case solves, sensitivity evaluation, MMA updates, convergence checks, and output writing. `topopt.py` is the thin entry point the input files call.
+- **[`src/matto/driver.py`](src/matto/driver.py):** `OptimizationDriver`, which orchestrates the optimization loop: active design variables, continuation, load-case solves, sensitivity evaluation, MMA updates, convergence checks, and output writing.
 - **[`src/matto/sensitivity.py`](src/matto/sensitivity.py):** Evaluates objective and constraint derivatives using direct terms and nonlinear adjoint solves.
 - **[`src/matto/operators.py`](src/matto/operators.py):** Defines the generic `DesignVariable` representation and the operator chain (Helmholtz filter, Heaviside projection) that maps raw design fields to physical ones and carries sensitivities back.
 - **[`src/matto/optimize.py`](src/matto/optimize.py):** Contains the MMA implementation used to update the design variables.
@@ -177,7 +177,7 @@ mpirun -n 4 python -m pytest -m examples
 
 ## Running an example
 
-Activate `confenx` and install the package in that environment before running anything (`python -m pip install -e .` from the repository root). This is required so `from matto.topopt import topopt` resolves.
+Activate `confenx` and install the package in that environment before running anything (`python -m pip install -e .` from the repository root). This is required so `from matto.driver import OptimizationDriver` resolves.
 
 ```bash
 conda activate confenx
@@ -209,7 +209,7 @@ The fastest route is to copy the closest existing family directory and replace o
 3. Define the load steps, load cases, and prescribed stimuli.
 4. Put the family energy in `material.py` and bind it with `build_free_energy = make_build_free_energy(material_parameters)`.
 5. Implement the objective, constraints, and optional output fields.
-6. Assemble the `problem` dictionary, including `fem_options["solver_options"]` with `state`, `adjoint`, and `filter` blocks, and call `topopt(problem)` (`from matto.topopt import topopt`).
+6. Assemble the `problem` dictionary, including `fem_options["solver_options"]` with `state`, `adjoint`, and `filter` blocks, and run it with `OptimizationDriver(problem).run()` (`from matto.driver import OptimizationDriver`).
 
 New stimulus names are collected automatically from the load cases and passed to `build_free_energy(...)` as FEniCSx constants. This allows a new constitutive model to be introduced without editing the optimization core.
 

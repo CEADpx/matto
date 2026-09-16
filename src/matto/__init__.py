@@ -1,5 +1,5 @@
 """MatTO: material and topology optimization of stimulus-responsive soft materials."""
 
-from .topopt import topopt
+from .driver import OptimizationDriver
 
-__all__ = ["topopt"]
+__all__ = ["OptimizationDriver"]

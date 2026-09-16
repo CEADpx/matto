@@ -6,7 +6,7 @@ import numpy as np
 import ufl
 from mpi4py import MPI
 
-from matto.topopt import topopt
+from matto.driver import OptimizationDriver
 from material import make_build_free_energy
 
 # ============================================================
@@ -486,4 +486,4 @@ problem = {
 # ============================================================
 
 if __name__ == "__main__":
-    topopt(problem)
+    OptimizationDriver(problem).run()
