@@ -142,8 +142,8 @@ MatTO
 - **[`src/matto/driver.py`](src/matto/driver.py):** `OptimizationDriver`, which orchestrates the optimization loop: active design variables, continuation, load-case solves, sensitivity evaluation, MMA updates, convergence checks, and output writing.
 - **[`src/matto/materials/`](src/matto/materials/):** The `Material` contract, the four supported models (`hmsm`, `lce`, `mae`, `mae_aniso`), shared kinematics and interpolation helpers, and `check_material` for validating a new model.
 - **[`src/matto/sensitivity.py`](src/matto/sensitivity.py):** Evaluates objective and constraint derivatives using direct terms and nonlinear adjoint solves.
-- **[`src/matto/operators.py`](src/matto/operators.py):** Defines the generic `DesignVariable` representation and the operator chain (Helmholtz filter, Heaviside projection) that maps raw design fields to physical ones and carries sensitivities back.
-- **[`src/matto/optimize.py`](src/matto/optimize.py):** Contains the MMA implementation used to update the design variables.
+- **[`src/matto/design.py`](src/matto/design.py):** Defines the generic `DesignVariable` representation and the operator chain (Helmholtz filter, Heaviside projection) that maps raw design fields to physical ones and carries sensitivities back.
+- **[`src/matto/mma.py`](src/matto/mma.py):** The MMA implementation, from FEniTop, used to update the design variables.
 - **[`src/matto/utility.py`](src/matto/utility.py):** Provides the nonlinear solver wrapper, MPI communication helpers, plotting, and output utilities.
 
 ### Example directories

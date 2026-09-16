@@ -42,7 +42,7 @@ class Sensitivity:
 
     Nothing here is specific to rho, phi, theta, or any material model.
     It works with whichever active design variables were created by
-    operators.py; the forms come from state.py.
+    design.py; the forms come from state.py.
 
     Seen as one reverse sweep,
 

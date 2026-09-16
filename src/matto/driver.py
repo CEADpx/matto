@@ -30,8 +30,8 @@ import dolfinx.io
 import numpy as np
 from dolfinx import fem
 
-from .operators import DesignVariable
-from .optimize import DEFAULT_MOVE, mma_optimizer
+from .design import DesignVariable
+from .mma import DEFAULT_MOVE, mma_optimizer
 from .sensitivity import Sensitivity
 from .state import StateProblem
 from .utility import Communicator, resolve_solver_options

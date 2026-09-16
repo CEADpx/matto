@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 from mpi4py import MPI
 
-from matto.optimize import DEFAULT_MOVE, mma_optimizer
+from matto.mma import DEFAULT_MOVE, mma_optimizer
 
 
 def _dummy_mma_args():

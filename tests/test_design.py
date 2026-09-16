@@ -19,7 +19,7 @@ from dolfinx.fem import Function, functionspace
 from dolfinx.mesh import CellType, create_rectangle
 from mpi4py import MPI
 
-from matto.operators import (
+from matto.design import (
     DesignVariable,
     HeavisideProjection,
     HelmholtzFilter,
