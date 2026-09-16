@@ -7,6 +7,7 @@ import ufl
 from mpi4py import MPI
 
 from matto.driver import OptimizationDriver
+from matto.design import volume_constraint
 from matto.materials import HardMagneticSoftMaterial
 
 # ============================================================
@@ -177,16 +178,12 @@ design_variables = {
         "active": False,
         "initial": 1.0,
         "bounds": (0.05, 1.0),
-        "prescribed_value": 1.0,
-        "raw_space": ("DG", 0),
-        "physical_space": ("CG", 1),
         "operators": [
             {
                 "type": "density_filter",
                 "radius": 0.20,
             },
         ],
-        "fixed_regions": [],
     },
 
     "phi": {
@@ -194,8 +191,6 @@ design_variables = {
         "initial": 0.15,
         "bounds": (0.0, 0.30),
         "prescribed_value": 0.0,
-        "raw_space": ("DG", 0),
-        "physical_space": ("CG", 1),
         "operators": [
             {
                 "type": "density_filter",
@@ -216,15 +211,12 @@ design_variables = {
         "initial": 0.0,
         "bounds": (-np.pi, np.pi),
         "prescribed_value": 0.0,
-        "raw_space": ("DG", 0),
-        "physical_space": ("CG", 1),
         "operators": [
             {
                 "type": "density_filter",
                 "radius": 0.20,
             },
         ],
-        "fixed_regions": [],
     },
 }
 
@@ -347,14 +339,8 @@ def build_constraints(
 ):
     """Constrain the domain-average magnetic particle fraction."""
     phi_phys = design_variables["phi"].phys
-    domain_volume = 1.0 * dx
-
     return {
-        "phi_volume": {
-            "form": phi_phys * dx,
-            "normalize_by": domain_volume,
-            "upper_bound": 0.15,
-        },
+        "phi_volume": volume_constraint(phi_phys, 0.15, dx),
     }
 
 # ============================================================

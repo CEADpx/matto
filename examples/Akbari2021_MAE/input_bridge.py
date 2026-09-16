@@ -10,6 +10,7 @@ from mpi4py import MPI
 from dolfinx.mesh import CellType, create_rectangle
 
 from matto.driver import OptimizationDriver
+from matto.design import volume_constraint
 from matto.materials import AnisotropicMagnetoActiveElastomer
 
 # ============================================================
@@ -134,8 +135,6 @@ design_variables = {
         "initial": 0.45,
         "bounds": (0.05, 1.00),
         "prescribed_value": 1.00,
-        "raw_space": ("DG", 0),
-        "physical_space": ("CG", 1),
         "operators": [
             {
                 "type": "density_filter",
@@ -162,8 +161,6 @@ design_variables = {
         "initial": 0.30,
         "bounds": (0.00, 1.00),
         "prescribed_value": 0.00,
-        "raw_space": ("DG", 0),
-        "physical_space": ("CG", 1),
         "operators": [
             {
                 "type": "density_filter",
@@ -190,15 +187,12 @@ design_variables = {
         "initial": initial_theta,
         "bounds": (-np.pi / 2.0, np.pi / 2.0),
         "prescribed_value": 0.0,
-        "raw_space": ("DG", 0),
-        "physical_space": ("CG", 1),
         "operators": [
             {
                 "type": "density_filter",
                 "radius": 1.5,
             },
         ],
-        "fixed_regions": [],
     },
 }
 
@@ -277,11 +271,7 @@ def build_constraints(
     magnetic_fraction_limit = 0.30
 
     return {
-        "solid_volume": {
-            "form": rho_phys * dx,
-            "normalize_by": domain_volume,
-            "upper_bound": 0.45,
-        },
+        "solid_volume": volume_constraint(rho_phys, 0.45, dx),
 
         "magnetic_fraction_of_solid": {
             "form": (

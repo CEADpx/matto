@@ -8,6 +8,7 @@ from mpi4py import MPI
 from dolfinx.mesh import CellType, create_rectangle
 
 from matto.driver import OptimizationDriver
+from matto.design import volume_constraint
 from matto.materials import HardMagneticSoftMaterial
 
 # ============================================================
@@ -66,8 +67,6 @@ design_variables = {
         "prescribed_value": 1.00,
 
         # Optimization and physical-field spaces
-        "raw_space": ("DG", 0),
-        "physical_space": ("CG", 1),
 
         # Applied in the listed order:
         # rho.raw -> density filter -> Heaviside -> rho.phys
@@ -85,7 +84,6 @@ design_variables = {
         ],
 
         # Optional regions where the raw variable is fixed
-        "fixed_regions": [],
     },
 
     "phi": {
@@ -98,8 +96,6 @@ design_variables = {
         # Nonmagnetic material if phi is inactive
         "prescribed_value": 0.00,
 
-        "raw_space": ("DG", 0),
-        "physical_space": ("CG", 1),
 
         # phi.raw -> density filter -> phi.phys
         "operators": [
@@ -109,7 +105,6 @@ design_variables = {
             },
         ],
 
-        "fixed_regions": [],
     },
 
     "theta": {
@@ -123,8 +118,6 @@ design_variables = {
         # Prescribed +x direction if theta is inactive
         "prescribed_value": 0.0,
 
-        "raw_space": ("DG", 0),
-        "physical_space": ("CG", 1),
 
         # theta.raw -> density filter -> theta.phys
         "operators": [
@@ -134,7 +127,6 @@ design_variables = {
             },
         ],
 
-        "fixed_regions": [],
     },
 }
 
@@ -217,20 +209,10 @@ def build_constraints(
     rho_phys = design_variables["rho"].phys
     phi_phys = design_variables["phi"].phys
 
-    domain_volume = 1.0 * dx
-
     return {
-        "rho_volume": {
-            "form": rho_phys * dx,
-            "normalize_by": domain_volume,
-            "upper_bound": 0.50,
-        },
+        "rho_volume": volume_constraint(rho_phys, 0.50, dx),
 
-        "phi_volume": {
-            "form": phi_phys * dx,
-            "normalize_by": domain_volume,
-            "upper_bound": 0.10,
-        },
+        "phi_volume": volume_constraint(phi_phys, 0.10, dx),
     }
 
 # ============================================================

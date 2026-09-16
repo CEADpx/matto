@@ -15,6 +15,7 @@ from dolfinx.mesh import (
 )
 
 from matto.driver import OptimizationDriver
+from matto.design import volume_constraint
 from matto.materials import LiquidCrystalElastomer
 
 # ============================================================
@@ -165,8 +166,6 @@ design_variables = {
         "initial": 0.50,
         "bounds": (0.05, 1.00),
         "prescribed_value": 1.00,
-        "raw_space": ("DG", 0),
-        "physical_space": ("CG", 1),
         "operators": [
             {
                 "type": "density_filter",
@@ -195,8 +194,6 @@ design_variables = {
         "initial": 0.50,
         "bounds": (0.00, 1.00),
         "prescribed_value": 0.00,
-        "raw_space": ("DG", 0),
-        "physical_space": ("CG", 1),
         "operators": [
             {
                 "type": "density_filter",
@@ -223,15 +220,12 @@ design_variables = {
         "initial": initial_theta,
         "bounds": (-np.pi / 2.0, np.pi / 2.0),
         "prescribed_value": 0.0,
-        "raw_space": ("DG", 0),
-        "physical_space": ("CG", 1),
         "operators": [
             {
                 "type": "density_filter",
                 "radius": 0.35,
             },
         ],
-        "fixed_regions": [],
     },
 }
 
@@ -319,11 +313,7 @@ def build_constraints(
     active_fraction_limit = 0.50  # volume fraction of LCE allowed in solid regions
 
     return {
-        "rho_volume": {
-            "form": rho_phys * dx,
-            "normalize_by": domain_volume,
-            "upper_bound": 0.50,
-        },
+        "rho_volume": volume_constraint(rho_phys, 0.50, dx),
 
         "active_lce_fraction": {
             "form": (

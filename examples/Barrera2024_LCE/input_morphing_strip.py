@@ -9,6 +9,7 @@ from mpi4py import MPI
 from dolfinx.mesh import CellType, create_rectangle
 
 from matto.driver import OptimizationDriver
+from matto.design import volume_constraint
 from matto.materials import LiquidCrystalElastomer
 
 # ============================================================
@@ -154,16 +155,12 @@ design_variables = {
         "active": False,
         "initial": 1.0,
         "bounds": (0.05, 1.0),
-        "prescribed_value": 1.0,
-        "raw_space": ("DG", 0),
-        "physical_space": ("CG", 1),
         "operators": [
             {
                 "type": "density_filter",
                 "radius": 0.20,
             },
         ],
-        "fixed_regions": [],
     },
 
     "phi": {
@@ -172,9 +169,6 @@ design_variables = {
         "active": True,
         "initial": 0.50,
         "bounds": (0.00, 1.00),
-        "prescribed_value": 1.00,
-        "raw_space": ("DG", 0),
-        "physical_space": ("CG", 1),
         "operators": [
             {
                 "type": "density_filter",
@@ -187,7 +181,6 @@ design_variables = {
                 "beta_max": 4.0,
             },
         ],
-        "fixed_regions": [],
     },
 
     "theta": {
@@ -197,15 +190,12 @@ design_variables = {
         "initial": initial_theta,
         "bounds": (-np.pi / 2.0, np.pi / 2.0),
         "prescribed_value": 0.0,
-        "raw_space": ("DG", 0),
-        "physical_space": ("CG", 1),
         "operators": [
             {
                 "type": "density_filter",
                 "radius": 0.15,
             },
         ],
-        "fixed_regions": [],
     },
 }
 
@@ -277,14 +267,8 @@ def build_constraints(
 ):
     """Limit programmed active LCE to half of the solid strip."""
     phi_phys = design_variables["phi"].phys
-    domain_volume = 1.0 * dx
-
     return {
-        "active_lce_fraction": {
-            "form": phi_phys * dx,
-            "normalize_by": domain_volume,
-            "upper_bound": 0.80,
-        },
+        "active_lce_fraction": volume_constraint(phi_phys, 0.80, dx),
     }
 
 # ============================================================

@@ -8,6 +8,7 @@ from mpi4py import MPI
 from dolfinx.mesh import CellType, create_rectangle
 
 from matto.driver import OptimizationDriver
+from matto.design import volume_constraint
 from matto.materials import MagnetoActiveElastomer
 
 # ============================================================
@@ -69,16 +70,12 @@ design_variables = {
         "active": False,
         "initial": 1.0,
         "bounds": (0.05, 1.00),
-        "prescribed_value": 1.0,
-        "raw_space": ("DG", 0),
-        "physical_space": ("CG", 1),
         "operators": [
             {
                 "type": "density_filter",
                 "radius": 1.0,
             },
         ],
-        "fixed_regions": [],
     },
 
     "phi": {
@@ -87,15 +84,12 @@ design_variables = {
         "initial": 0.30,
         "bounds": (0.00, 1.00),
         "prescribed_value": 0.00,
-        "raw_space": ("DG", 0),
-        "physical_space": ("CG", 1),
         "operators": [
             {
                 "type": "density_filter",
                 "radius": 1.0,
             },
         ],
-        "fixed_regions": [],
     },
 }
 
@@ -158,14 +152,8 @@ def build_constraints(
     dx,
 ):
     phi_phys = design_variables["phi"].phys
-    domain_volume = 1.0 * dx
-
     return {
-        "magnetic_material_fraction": {
-            "form": phi_phys * dx,
-            "normalize_by": domain_volume,
-            "upper_bound": 0.30,
-        },
+        "magnetic_material_fraction": volume_constraint(phi_phys, 0.30, dx),
     }
 
 # ============================================================

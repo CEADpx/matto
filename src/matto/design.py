@@ -44,6 +44,22 @@ from petsc4py import PETSc
 
 from .utility import apply_petsc_options
 
+DEFAULT_RAW_SPACE = ("DG", 0)
+DEFAULT_PHYSICAL_SPACE = ("CG", 1)
+
+
+def volume_constraint(field, upper_bound, dx):
+    """
+    A volume constraint on a physical design field, as the dictionary
+    build_constraints() returns: the field's integral over the domain,
+    normalized by the domain volume, no larger than upper_bound.
+    """
+    return {
+        "form": field * dx,
+        "normalize_by": 1.0 * dx,
+        "upper_bound": upper_bound,
+    }
+
 
 def _same_space(a, b):
     """Two FunctionSpace objects with the same element on the same mesh.
@@ -476,7 +492,10 @@ class DesignVariable:
 
         self.active = settings["active"]
         self.initial = settings["initial"]
-        self.prescribed_value = settings["prescribed_value"]
+
+        # The value an inactive variable's physical field takes; an
+        # active variable never uses it. Defaults to the initial value.
+        self.prescribed_value = settings.get("prescribed_value", self.initial)
 
         self.lower_bound = float(settings["bounds"][0])
         self.upper_bound = float(settings["bounds"][1])
@@ -490,8 +509,10 @@ class DesignVariable:
         # Function spaces and fields
         # ----------------------------------------------------
 
-        self.raw_space_spec = tuple(settings["raw_space"])
-        self.physical_space_spec = tuple(settings["physical_space"])
+        self.raw_space_spec = tuple(settings.get("raw_space", DEFAULT_RAW_SPACE))
+        self.physical_space_spec = tuple(
+            settings.get("physical_space", DEFAULT_PHYSICAL_SPACE)
+        )
 
         self.raw_space = functionspace(
             mesh,
