@@ -148,7 +148,7 @@ MatTO
 
 ### Example directories
 
-Each example directory contains a family `material.py`, input scripts, and result summaries. The `matto` package remains independent of the material family. Solver settings live in `fem_options["solver_options"]` as separate `state`, `adjoint`, and `filter` blocks.
+Each example directory contains the input scripts for one material family and their result summaries; the family's model lives in `matto.materials`. The `matto` package remains independent of the material family. Solver settings live in `fem_options["solver_options"]` as separate `state`, `adjoint`, and `filter` blocks.
 
 ## Installation
 

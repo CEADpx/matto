@@ -84,7 +84,7 @@ def _run_example(script, output_dir):
         matto.OptimizationDriver = original
         if sys.path and sys.path[0] == str(script_path.parent):
             sys.path.pop(0)
-    
+
     return captured["text"]
 
 
