@@ -55,11 +55,30 @@ class Operator(ABC):
     forward() must run before backward() within an iteration. Operators
     are free to cache the linearization at the current point during
     forward() and use it in backward().
+
+    Operators that can appear in an input file's ``operators`` list
+    implement from_spec() and are listed in OPERATOR_TYPES.
     """
 
     def __init__(self, input_field, output_field):
         self.input = input_field
         self.output = output_field
+
+    @classmethod
+    def from_spec(cls, spec, input_field, output_field, context):
+        """
+        Build the operator from one entry of an input file's operators list.
+
+        input_field is the field written by the previous operator (or
+        the raw field). output_field is the variable's phys field when
+        this operator is last in the chain and None otherwise, in which
+        case the operator allocates its own intermediate. context holds
+        ``name``, ``index``, ``comm``, ``petsc_options`` and
+        ``physical_space``.
+        """
+        raise TypeError(
+            f"{cls.__name__} cannot be built from an input-file entry."
+        )
 
     @abstractmethod
     def forward(self):
@@ -125,6 +144,8 @@ class HelmholtzFilter(Operator):
         if petsc_options is None:
             petsc_options = {}
 
+        self.radius = float(radius)
+
         S0, S = input_field.function_space, output_field.function_space
         u0, u = ufl.TrialFunction(S0), ufl.TrialFunction(S)
         v, self.af = ufl.TestFunction(S), Function(S)
@@ -136,7 +157,7 @@ class HelmholtzFilter(Operator):
 
         # Kf and T from the weak form of the Helmholtz equation
         dx = ufl.Measure("dx", metadata={"quadrature_degree": 2})
-        Kf_expr = (radius**2*ufl.dot(ufl.grad(u), ufl.grad(v)) + u*v)*dx
+        Kf_expr = (self.radius**2*ufl.dot(ufl.grad(u), ufl.grad(v)) + u*v)*dx
         T_expr = u0*v*dx
         Kf_form, T_form = form(Kf_expr), form(T_expr)
         Kf_mat, self.T_mat = create_matrix(Kf_form), create_matrix(T_form)
@@ -157,6 +178,22 @@ class HelmholtzFilter(Operator):
         self.T_mat.assemble()
         self.T_mat_transpose = self.T_mat.copy()
         self.T_mat_transpose.transpose()
+
+    @classmethod
+    def from_spec(cls, spec, input_field, output_field, context):
+        if output_field is None:
+            output_field = Function(
+                context["physical_space"],
+                name=f"{context['name']}_filtered_{context['index']}",
+            )
+
+        return cls(
+            context["comm"],
+            input_field,
+            output_field,
+            radius=float(spec["radius"]),
+            petsc_options=context["petsc_options"],
+        )
 
     def forward(self):
         self.T_mat.mult(self.input.x.petsc_vec, self.vec_s)
@@ -213,6 +250,25 @@ class HeavisideProjection(Operator):
                 "Heaviside projection needs beta_max >= beta_initial."
             )
 
+    @classmethod
+    def from_spec(cls, spec, input_field, output_field, context):
+        if output_field is None:
+            output_field = Function(
+                input_field.function_space,
+                name=f"{context['name']}_projected_{context['index']}",
+            )
+
+        beta = float(spec.get("beta_initial", 1.0))
+
+        return cls(
+            input_field,
+            output_field,
+            beta=beta,
+            beta_max=float(spec.get("beta_max", beta)),
+            update_interval=int(spec.get("beta_update_interval", 0)),
+            eta=float(spec.get("eta", 0.5)),
+        )
+
     def update(self, iteration):
         if (
             iteration > 0
@@ -245,14 +301,22 @@ class HeavisideProjection(Operator):
         return gradients
 
 
+# Input-file "type" -> operator class. Extend this from a material file
+# to make a custom operator available to its input scripts.
+OPERATOR_TYPES = {
+    "density_filter": HelmholtzFilter,
+    "heaviside": HeavisideProjection,
+}
+
+
 def build_operator_chain(name, specs, raw, phys, comm, petsc_options):
     """
     Turn the ``operators`` list of an input file into Operator objects.
 
     The chain is threaded from raw to phys: each operator reads the
-    field the previous one wrote, and the last one writes phys. In-place
-    operators that sit before the end get their own intermediate field
-    so raw is never overwritten.
+    field the previous one wrote, and the last one writes phys. An
+    operator that is not last allocates its own intermediate field, so
+    raw is never overwritten.
     """
 
     if not specs:
@@ -263,38 +327,30 @@ def build_operator_chain(name, specs, raw, phys, comm, petsc_options):
 
     for index, spec in enumerate(specs):
         operator_type = spec["type"]
+
+        try:
+            operator_class = OPERATOR_TYPES[operator_type]
+        except KeyError:
+            raise ValueError(
+                f"unknown operator '{operator_type}'; known types are "
+                f"{sorted(OPERATOR_TYPES)}."
+            ) from None
+
+        context = {
+            "name": name,
+            "index": index,
+            "comm": comm,
+            "petsc_options": petsc_options,
+            "physical_space": phys.function_space,
+        }
+
         last = index == len(specs) - 1
-
-        if operator_type == "density_filter":
-            output = phys if last else Function(
-                phys.function_space,
-                name=f"{name}_filtered_{index}",
-            )
-            operator = HelmholtzFilter(
-                comm,
-                current,
-                output,
-                radius=float(spec["radius"]),
-                petsc_options=petsc_options,
-            )
-
-        elif operator_type == "heaviside":
-            output = phys if last else Function(
-                current.function_space,
-                name=f"{name}_projected_{index}",
-            )
-            beta = float(spec.get("beta_initial", 1.0))
-            operator = HeavisideProjection(
-                current,
-                output,
-                beta=beta,
-                beta_max=float(spec.get("beta_max", beta)),
-                update_interval=int(spec.get("beta_update_interval", 0)),
-                eta=float(spec.get("eta", 0.5)),
-            )
-
-        else:
-            raise ValueError(f"unknown operator '{operator_type}'.")
+        operator = operator_class.from_spec(
+            spec,
+            current,
+            phys if last else None,
+            context,
+        )
 
         operators.append(operator)
         current = operator.output
