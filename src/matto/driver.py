@@ -216,8 +216,18 @@ class OptimizationDriver:
     - Requested output fields
     - FEM, MMA, and output options
 
-    Construction sets everything up; run() does the iterations and
-    writes the results.
+    Construction reads and checks the problem and builds the design
+    variables, the state problem and the sensitivity object. After
+    that the object can be used three ways:
+
+        driver.run()               optimize, save and report
+        driver.evaluate()          solve every load case for the current
+                                   design; objective, gradients,
+                                   constraints, no optimization step
+        driver.solve_load_case(c)  one forward analysis
+
+    forward() pushes the raw design through the operator chains; call it
+    after changing raw values by hand and before evaluate().
     """
 
     def __init__(self, problem):
@@ -228,7 +238,7 @@ class OptimizationDriver:
         self._build_state()
         self._validate_load_cases()
         self._layout_design_vector()
-        self._prepare_output()
+        self._prepare_output_fields()
         self._read_optimization_options()
 
     # ============================================================
@@ -407,16 +417,9 @@ class OptimizationDriver:
                 "The active design vector is empty."
             )
 
-        self.design_vector_old_1 = np.zeros(
-            self.design_vector_size,
-            dtype=float,
-        )
-
-        self.design_vector_old_2 = np.zeros(
-            self.design_vector_size,
-            dtype=float,
-        )
-
+    def _reset_mma_history(self):
+        self.design_vector_old_1 = np.zeros(self.design_vector_size, dtype=float)
+        self.design_vector_old_2 = np.zeros(self.design_vector_size, dtype=float)
         self.lower_asymptotes = None
         self.upper_asymptotes = None
 
@@ -424,15 +427,10 @@ class OptimizationDriver:
     # Output construction
     # ============================================================
 
-    def _prepare_output(self):
+    def _prepare_output_fields(self):
         self.output_dir = os.path.abspath(
             self.output_options.get("output_dir", "results")
         )
-
-        if self.comm.rank == 0:
-            os.makedirs(self.output_dir, exist_ok=True)
-
-        self.comm.barrier()
 
         (
             self.output_functions,
@@ -443,7 +441,23 @@ class OptimizationDriver:
             self.state.output_fields,
         )
 
+        self.simulation_output_interval = int(
+            self.output_options.get("sim_output_interval", 1)
+        )
+
+        if self.simulation_output_interval < 1:
+            raise ValueError(
+                "sim_output_interval must be at least 1."
+            )
+
+        # Writers are opened by run() and closed when it returns.
         self.output_writers = {}
+
+    def _open_output(self):
+        if self.comm.rank == 0:
+            os.makedirs(self.output_dir, exist_ok=True)
+
+        self.comm.barrier()
 
         if len(self.output_functions) > 0:
             fields_to_write = list(self.output_functions.values())
@@ -461,15 +475,6 @@ class OptimizationDriver:
                     fields_to_write,
                     engine="BP4",
                 )
-
-        self.simulation_output_interval = int(
-            self.output_options.get("sim_output_interval", 1)
-        )
-
-        if self.simulation_output_interval < 1:
-            raise ValueError(
-                "sim_output_interval must be at least 1."
-            )
 
     def _write_output(self, load_case_name, time_value):
         _update_output_fields(
@@ -593,29 +598,66 @@ class OptimizationDriver:
             for variable in self.active_design_variables.values()
         )
 
+    def forward(self, iteration=0):
+        """
+        Push every raw design field through its operator chain.
+
+        iteration is passed to the operators' continuation schedules;
+        the default of 0 never triggers one. Returns True if any
+        operator advanced its schedule.
+        """
+
+        updated = False
+
+        for variable in self.design_variables.values():
+            updated = variable.forward(iteration) or updated
+
+        return updated
+
     def run(self):
-        """Iterate to convergence, then solve, save and report the final design."""
+        """
+        Iterate to convergence, then re-solve, save and report the design.
+
+        Returns a dictionary with the final objective, constraint values,
+        maximum displacements, the number of iterations taken, and the
+        output directory. Calling run() again continues from the current
+        design and continuation state with a fresh MMA history.
+        """
 
         self.optimization_iteration = 0
         self.change = 2.0 * self.optimization_tolerance
+        self._reset_mma_history()
 
         self.last_objective_value = None
         self.last_constraint_values = None
         self.last_max_displacements = {}
 
-        while (
-            self.optimization_iteration < self.maximum_iterations
-            and (
-                self.change > self.optimization_tolerance
-                or not self.continuation_complete()
-            )
-        ):
-            self._iterate()
+        self._open_output()
 
-        self._solve_final_design()
-        self._save_final_arrays()
-        self._write_final_report()
-        self._close()
+        try:
+            while (
+                self.optimization_iteration < self.maximum_iterations
+                and (
+                    self.change > self.optimization_tolerance
+                    or not self.continuation_complete()
+                )
+            ):
+                self._iterate()
+
+            self._solve_final_design()
+            self._save_final_arrays()
+            self._write_final_report()
+
+        finally:
+            self._close()
+
+        return {
+            "objective": self.final_objective_value,
+            "constraints": self.final_constraint_values,
+            "max_displacements": self.final_max_displacements,
+            "iterations": self.optimization_iteration,
+            "output_dir": self.output_dir,
+        }
 
     def _iterate(self):
         iteration_start = time.perf_counter()
@@ -623,26 +665,20 @@ class OptimizationDriver:
         self.optimization_iteration += 1
         iteration = self.optimization_iteration
 
-        # raw -> physical design variables
-        operators_updated = False
+        operators_updated = self.forward(iteration)
 
-        for variable in self.design_variables.values():
-            operators_updated = variable.forward(iteration) or operators_updated
-
-        (
-            objective_value,
-            objective_gradients,
-            constraint_values,
-            constraint_gradients,
-            max_displacements,
-        ) = self._evaluate_design(write_output=(
-            iteration % self.simulation_output_interval == 0
-        ))
+        evaluation = self.evaluate(
+            write_output=(iteration % self.simulation_output_interval == 0),
+            report=True,
+        )
+        objective_value = evaluation["objective"]
+        constraint_values = evaluation["constraints"]
+        max_displacements = evaluation["max_displacements"]
 
         self._mma_update(
-            objective_gradients,
+            evaluation["objective_gradients"],
             constraint_values,
-            constraint_gradients,
+            evaluation["constraint_gradients"],
         )
 
         # A continuation step moves the map itself, so the design has
@@ -672,7 +708,7 @@ class OptimizationDriver:
         self.last_constraint_values = constraint_values
         self.last_max_displacements = max_displacements
 
-    def _evaluate_design(self, write_output):
+    def evaluate(self, write_output=False, report=False):
         """
         Solve every load case and accumulate the objective and its gradients.
 
@@ -680,6 +716,13 @@ class OptimizationDriver:
         gradients are in raw space. Constraints are design-dependent and
         load-independent, so their values and gradients are taken from
         the first load case only.
+
+        Returns a dictionary:
+            objective             weighted sum over load cases
+            objective_gradients   {variable: owned raw-space array}
+            constraints           {name: {"value", "residual"}}
+            constraint_gradients  {name: {variable: owned array}}
+            max_displacements     {load case: max |u| over all ranks}
         """
 
         active = self.active_design_variables
@@ -701,7 +744,7 @@ class OptimizationDriver:
             load_case_name, max_displacement = self.solve_load_case(load_case)
             max_displacements[load_case_name] = max_displacement
 
-            if self.comm.rank == 0:
+            if report and self.comm.rank == 0:
                 print(
                     f"  [{load_case_name}] "
                     f"max abs displacement: "
@@ -775,13 +818,13 @@ class OptimizationDriver:
                 "Constraint gradients were not evaluated."
             )
 
-        return (
-            objective_value_total,
-            objective_gradients_total,
-            constraint_values,
-            constraint_gradients_raw,
-            max_displacements,
-        )
+        return {
+            "objective": objective_value_total,
+            "objective_gradients": objective_gradients_total,
+            "constraints": constraint_values,
+            "constraint_gradients": constraint_gradients_raw,
+            "max_displacements": max_displacements,
+        }
 
     def _mma_update(self, objective_gradients, constraint_values,
                     constraint_gradients):
@@ -862,8 +905,7 @@ class OptimizationDriver:
     def _solve_final_design(self):
         # Re-solve the final updated design so the output and the
         # reported objective correspond to the design saved below.
-        for variable in self.design_variables.values():
-            variable.forward(iteration=0)
+        self.forward()
 
         self.final_objective_value = 0.0
         self.final_constraint_values = None

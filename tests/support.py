@@ -9,19 +9,8 @@ from pathlib import Path
 import numpy as np
 from dolfinx.mesh import CellType, create_rectangle
 from mpi4py import MPI
-from petsc4py import PETSc
 
-from matto.state import StateProblem
-from matto.operators import DesignVariable
-from matto.sensitivity import Sensitivity
-from matto.driver import (
-    _owned_gradient,
-    _owned_size,
-    _owned_values,
-    _set_constant,
-    _zero_function,
-)
-from matto.utility import resolve_solver_options
+from matto.driver import OptimizationDriver
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 HMSM_MATERIAL = REPO_ROOT / "examples" / "hMSM" / "material.py"
@@ -238,112 +227,17 @@ class BeamSession:
     """Assemble the beam once and re-evaluate after raw-design changes."""
 
     def __init__(self, problem):
-        self.problem = problem
-        self.mesh = problem["mesh"]
-        self.comm = problem.get("comm", self.mesh.comm)
-        self.load_steps = int(problem["load_steps"])
-        self.load_cases = problem["load_cases"]
-
-        solver_options = resolve_solver_options(
-            problem.get("fem_options", {})
-        )
-        filter_petsc = solver_options["filter"].get("petsc_options", {})
-
-        self.design_variables = {}
-        for name, settings in problem["design_variables"].items():
-            self.design_variables[name] = DesignVariable(
-                name=name,
-                mesh=self.mesh,
-                settings=settings,
-                petsc_options=filter_petsc,
-            )
-
-        self.state = StateProblem(problem, self.design_variables)
-        self.sensitivity = Sensitivity(self.comm, self.state)
-        self.fem_problem = self.state.nonlinear_problem
-        self.u_field = self.state.u_field
-        self.body_force = self.state.body_force
-        self.traction_constants = self.state.traction_constants
-        self.stimuli = self.state.stimuli
-
-        for variable in self.design_variables.values():
-            variable.forward(iteration=1)
+        self.driver = OptimizationDriver(problem)
+        self.design_variables = self.driver.design_variables
+        self.driver.forward()
 
     def raw_values(self, name):
-        return _owned_values(self.design_variables[name].raw)
+        return self.design_variables[name].get_values()
 
     def set_raw_values(self, name, values):
-        variable = self.design_variables[name]
-        size = _owned_size(variable.raw)
-        variable.raw.x.array[:size] = values
-        variable.raw.x.petsc_vec.ghostUpdate(
-            addv=PETSc.InsertMode.INSERT,
-            mode=PETSc.ScatterMode.FORWARD,
-        )
-        variable.forward(iteration=1)
-
-    def _solve_load_case(self, load_case):
-        body_force_target = load_case.get(
-            "body_force",
-            np.zeros_like(self.body_force.value),
-        )
-        traction_targets = load_case.get("tractions", {})
-        stimulus_targets = load_case.get("stimuli", {})
-
-        _zero_function(self.u_field)
-        _set_constant(self.body_force, body_force_target, scale=0.0)
-        for traction in self.traction_constants.values():
-            _set_constant(traction, np.zeros_like(traction.value))
-        for stimulus in self.stimuli.values():
-            _set_constant(stimulus, np.zeros_like(stimulus.value))
-
-        for step in range(1, self.load_steps + 1):
-            load_fraction = step / self.load_steps
-            _set_constant(
-                self.body_force,
-                body_force_target,
-                scale=load_fraction,
-            )
-            for traction_name, traction in self.traction_constants.items():
-                target = traction_targets.get(
-                    traction_name,
-                    np.zeros_like(traction.value),
-                )
-                _set_constant(traction, target, scale=load_fraction)
-            for stimulus_name, stimulus in self.stimuli.items():
-                target = stimulus_targets.get(
-                    stimulus_name,
-                    np.zeros_like(stimulus.value),
-                )
-                _set_constant(stimulus, target, scale=load_fraction)
-            self.fem_problem.solve_fem()
+        self.design_variables[name].set_values(values)
+        self.driver.forward()
 
     def evaluate(self):
-        objective = 0.0
-        gradients = {
-            name: np.zeros(
-                _owned_size(variable.raw),
-                dtype=float,
-            )
-            for name, variable in self.design_variables.items()
-            if variable.active
-        }
-
-        for load_case in self.load_cases:
-            self._solve_load_case(load_case)
-            function_values, physical_gradients = self.sensitivity.evaluate()
-            weight = float(load_case.get("weight", 1.0))
-            objective += weight * function_values["objective"]
-
-            for name, variable in self.design_variables.items():
-                if not variable.active:
-                    continue
-                raw_gradients = variable.backward(
-                    [physical_gradients["objective"][name]]
-                )
-                gradients[name] += weight * _owned_gradient(
-                    raw_gradients[0],
-                    variable.raw,
-                )
-
-        return float(objective), gradients
+        result = self.driver.evaluate()
+        return float(result["objective"]), result["objective_gradients"]
