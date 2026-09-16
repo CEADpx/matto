@@ -55,7 +55,7 @@ class Sensitivity:
             -> raw-design gradient
     """
 
-    def __init__(self, comm, state):
+    def __init__(self, comm, state, objective_form, constraints):
         self.comm = comm
 
         # ============================================================
@@ -67,7 +67,7 @@ class Sensitivity:
         self.u_field = state.u_field
         self.lambda_field = state.lambda_field
 
-        self.objective_ufl = state.objective_form
+        self.objective_ufl = objective_form
         self.internal_force_ufl = state.internal_force_form
 
         self.all_design_variables = state.design_variables
@@ -272,7 +272,7 @@ class Sensitivity:
 
         self.constraints = {}
 
-        for constraint_name, specification in state.constraints.items():
+        for constraint_name, specification in constraints.items():
             self._initialize_constraint(
                 constraint_name,
                 specification,

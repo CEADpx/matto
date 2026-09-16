@@ -16,12 +16,13 @@ Major modifications:
 
 The nonlinear state problem: displacement space, boundary conditions,
 load constants, the free-energy density supplied by the material file,
-and the residual, objective and constraint forms built from it. No
-material-specific code is in this module.
+the residual built from it, and the load-stepped Newton solve. No
+material-specific or optimization-specific code is in this module.
 """
 
 import numpy as np
 import ufl
+from mpi4py import MPI
 from petsc4py import PETSc
 
 import basix
@@ -38,25 +39,49 @@ from ufl import grad, inner
 from .utility import WrapNonlinearProblem, resolve_solver_options
 
 
+def set_constant(constant, value, scale=1.0):
+    """Write scale * value into a dolfinx Constant, shape-checked."""
+    target = np.asarray(value, dtype=PETSc.ScalarType)
+
+    try:
+        constant.value[...] = scale * target
+
+    except (TypeError, ValueError) as error:
+        raise ValueError(
+            f"Load value with shape {target.shape} does not match "
+            f"Constant shape {np.asarray(constant.value).shape}."
+        ) from error
+
+
+def zero_function(function):
+    with function.x.petsc_vec.localForm() as local:
+        local.set(0.0)
+
+    function.x.petsc_vec.ghostUpdate(
+        addv=PETSc.InsertMode.INSERT,
+        mode=PETSc.ScatterMode.FORWARD,
+    )
+
+
 class StateProblem:
     """
     Quasi-static equilibrium of a stimulus-responsive solid on a mesh.
 
     Built once from the input-file dictionary and the DesignVariable
-    objects. Afterwards the driver changes the load constants
-    (body_force, traction_constants, stimuli) and calls
-    nonlinear_problem.solve_fem(); the sensitivity code reads the forms.
+    objects. solve(load_case, load_steps) then finds the equilibrium
+    displacement for one load case; the sensitivity code reads the
+    forms.
 
     Attributes:
         u_field, lambda_field  displacement and adjoint fields on V
         test_function          the test function the forms are built on
         dx, ds                 measures with the requested quadrature
+        body_force, traction_constants, stimuli
+                               the load Constants solve() ramps
         W, F, P                energy density, deformation gradient, PK1
         residual_form          L - a, the weak equilibrium statement
         internal_force_form    d(W dx)/du, used by the adjoint
-        objective_form         scalar UFL form from build_objective
-        constraints            dict of {form, normalize_by, upper_bound}
-        output_fields          name -> Function requested for output
+        external_work_form     loads dotted with u, for work objectives
         solver_options         resolved {state, adjoint, filter} blocks
     """
 
@@ -84,9 +109,7 @@ class StateProblem:
         self._build_load_constants()
         self._build_free_energy()
         self._build_residual()
-        self._build_objective()
-        self._build_constraints()
-        self._build_output_fields()
+        self._build_external_work()
 
     # ============================================================
     #  DISPLACEMENT AND ADJOINT FIELDS
@@ -367,11 +390,12 @@ class StateProblem:
         )
 
     # ============================================================
-    #  OBJECTIVE
+    #  EXTERNAL WORK
     # ============================================================
 
-    def _build_objective(self):
-        # External work evaluated with u rather than the test function.
+    def _build_external_work(self):
+        # Loads dotted with u rather than the test function. An
+        # objective built on the work done by the loads uses this.
         external_work = inner(self.u_field, self.body_force) * self.dx
         for name, traction in self.traction_constants.items():
             external_work += (
@@ -380,83 +404,70 @@ class StateProblem:
 
         self.external_work_form = external_work
 
-        self.objective_form = self.problem["build_objective"](
-            self.u_field,
-            external_work,
-            self.dx,
+    # ============================================================
+    #  SOLVE
+    # ============================================================
+
+    def solve(self, load_case, load_steps):
+        """
+        Find the equilibrium displacement for one load case.
+
+        Starts from the undeformed state and ramps the body force,
+        tractions and stimuli of the load case together from zero in
+        load_steps equal increments, Newton-solving at each. Loads the
+        case does not mention are held at zero. Leaves u_field at the
+        converged state and the load Constants at their full values.
+
+        Returns the maximum absolute displacement over all ranks.
+        """
+
+        body_force = self.body_force
+        traction_constants = self.traction_constants
+        stimuli = self.stimuli
+
+        body_force_target = load_case.get(
+            "body_force",
+            np.zeros_like(body_force.value),
         )
+        traction_targets = load_case.get("tractions", {})
+        stimulus_targets = load_case.get("stimuli", {})
 
-    # ============================================================
-    #  CONSTRAINTS
-    # ============================================================
+        zero_function(self.u_field)
 
-    def _build_constraints(self):
-        constraints = self.problem["build_constraints"](
-            self.design_variables,
-            self.dx,
-        )
+        set_constant(body_force, body_force_target, scale=0.0)
 
-        if not isinstance(constraints, dict):
-            raise TypeError("build_constraints() must return a dictionary.")
+        for traction in traction_constants.values():
+            set_constant(traction, np.zeros_like(traction.value))
 
-        required_keys = {"form", "normalize_by", "upper_bound"}
+        for stimulus in stimuli.values():
+            set_constant(stimulus, np.zeros_like(stimulus.value))
 
-        for name, constraint in constraints.items():
-            if not isinstance(constraint, dict):
-                raise TypeError(f"Constraint '{name}' must be a dictionary.")
+        for step in range(1, load_steps + 1):
+            load_fraction = step / load_steps
 
-            missing_keys = required_keys - set(constraint)
-            if missing_keys:
-                raise KeyError(
-                    f"Constraint '{name}' is missing: {sorted(missing_keys)}."
+            set_constant(body_force, body_force_target, scale=load_fraction)
+
+            for traction_name, traction in traction_constants.items():
+                target = traction_targets.get(
+                    traction_name,
+                    np.zeros_like(traction.value),
                 )
+                set_constant(traction, target, scale=load_fraction)
 
-            if float(constraint["upper_bound"]) <= 0.0:
-                raise ValueError(
-                    f"Constraint '{name}' must have a positive upper_bound."
+            for stimulus_name, stimulus in stimuli.items():
+                target = stimulus_targets.get(
+                    stimulus_name,
+                    np.zeros_like(stimulus.value),
                 )
+                set_constant(stimulus, target, scale=load_fraction)
 
-        self.constraints = constraints
+            self.nonlinear_problem.solve_fem()
 
-    # ============================================================
-    #  REQUESTED OUTPUT FIELDS
-    # ============================================================
+        displacement_array = self.u_field.x.array
 
-    def _build_output_fields(self):
-        available = {"u": self.u_field}
+        if displacement_array.size > 0:
+            local_max = float(np.max(np.abs(displacement_array)))
+        else:
+            local_max = 0.0
 
-        for name, variable in self.design_variables.items():
-            available[f"{name}_raw"] = variable.raw
-            available[f"{name}_phys"] = variable.phys
-
-        build_output_fields = self.problem.get("build_output_fields")
-
-        if build_output_fields is not None:
-            model_fields = build_output_fields(self.design_variables)
-
-            if not isinstance(model_fields, dict):
-                raise TypeError(
-                    "build_output_fields() must return a dictionary."
-                )
-
-            duplicates = set(available) & set(model_fields)
-            if duplicates:
-                raise ValueError(
-                    "build_output_fields() returned duplicate output names: "
-                    f"{sorted(duplicates)}."
-                )
-
-            available.update(model_fields)
-
-        requested = self.problem.get(
-            "requested_output_fields",
-            list(available),
-        )
-
-        unknown = set(requested) - set(available)
-        if unknown:
-            raise KeyError(
-                f"Unknown requested output fields: {sorted(unknown)}."
-            )
-
-        self.output_fields = {name: available[name] for name in requested}
+        return self.mesh.comm.allreduce(local_max, op=MPI.MAX)

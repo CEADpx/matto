@@ -29,8 +29,6 @@ import basix
 import dolfinx.io
 import numpy as np
 from dolfinx import fem
-from mpi4py import MPI
-from petsc4py import PETSc
 
 from .operators import DesignVariable
 from .optimize import DEFAULT_MOVE, mma_optimizer
@@ -94,32 +92,6 @@ def _owned_gradient(values, function):
         )
 
     return array[:size].copy()
-
-
-def _set_constant(constant, value, scale=1.0):
-    target = np.asarray(
-        value,
-        dtype=PETSc.ScalarType,
-    )
-
-    try:
-        constant.value[...] = scale * target
-
-    except (TypeError, ValueError) as error:
-        raise ValueError(
-            f"Load value with shape {target.shape} does not match "
-            f"Constant shape {np.asarray(constant.value).shape}."
-        ) from error
-
-
-def _zero_function(function):
-    with function.x.petsc_vec.localForm() as local:
-        local.set(0.0)
-
-    function.x.petsc_vec.ghostUpdate(
-        addv=PETSc.InsertMode.INSERT,
-        mode=PETSc.ScatterMode.FORWARD,
-    )
 
 
 # ================================================================
@@ -236,6 +208,7 @@ class OptimizationDriver:
         self._read_problem()
         self._build_design_variables()
         self._build_state()
+        self._build_objective_and_constraints()
         self._validate_load_cases()
         self._layout_design_vector()
         self._prepare_output_fields()
@@ -334,15 +307,60 @@ class OptimizationDriver:
 
     def _build_state(self):
         self.state = StateProblem(self.problem, self.design_variables)
-        self.sensitivity = Sensitivity(self.comm, self.state)
 
-        self.constraint_names = list(self.state.constraints)
+    # ============================================================
+    # Objective and constraints
+    # ============================================================
+
+    def _build_objective_and_constraints(self):
+        state = self.state
+
+        self.objective_form = self.problem["build_objective"](
+            state.u_field,
+            state.external_work_form,
+            state.dx,
+        )
+
+        constraints = self.problem["build_constraints"](
+            self.design_variables,
+            state.dx,
+        )
+
+        if not isinstance(constraints, dict):
+            raise TypeError("build_constraints() must return a dictionary.")
+
+        required_keys = {"form", "normalize_by", "upper_bound"}
+
+        for name, constraint in constraints.items():
+            if not isinstance(constraint, dict):
+                raise TypeError(f"Constraint '{name}' must be a dictionary.")
+
+            missing_keys = required_keys - set(constraint)
+            if missing_keys:
+                raise KeyError(
+                    f"Constraint '{name}' is missing: {sorted(missing_keys)}."
+                )
+
+            if float(constraint["upper_bound"]) <= 0.0:
+                raise ValueError(
+                    f"Constraint '{name}' must have a positive upper_bound."
+                )
+
+        self.constraints = constraints
+        self.constraint_names = list(constraints)
 
         if len(self.constraint_names) == 0:
             raise ValueError(
                 "At least one optimization constraint is required "
                 "by the current MMA implementation."
             )
+
+        self.sensitivity = Sensitivity(
+            self.comm,
+            state,
+            self.objective_form,
+            self.constraints,
+        )
 
     # ============================================================
     # Validate load cases
@@ -432,13 +450,38 @@ class OptimizationDriver:
             self.output_options.get("output_dir", "results")
         )
 
+        available = {"u": self.state.u_field}
+
+        for name, variable in self.design_variables.items():
+            available[f"{name}_raw"] = variable.raw
+            available[f"{name}_phys"] = variable.phys
+
+        build_output_fields = self.problem.get("build_output_fields")
+
+        if build_output_fields is not None:
+            model_fields = build_output_fields(self.design_variables)
+
+            if not isinstance(model_fields, dict):
+                raise TypeError(
+                    "build_output_fields() must return a dictionary."
+                )
+
+            duplicates = set(available) & set(model_fields)
+            if duplicates:
+                raise ValueError(
+                    "build_output_fields() returned duplicate output names: "
+                    f"{sorted(duplicates)}."
+                )
+
+            available.update(model_fields)
+
         (
             self.output_functions,
             self.interpolation_expressions,
         ) = _prepare_output_fields(
             self.mesh,
             self.requested_output_fields,
-            self.state.output_fields,
+            available,
         )
 
         self.simulation_output_interval = int(
@@ -518,73 +561,10 @@ class OptimizationDriver:
     # ============================================================
 
     def solve_load_case(self, load_case):
-        """
-        Solve one load case from the undeformed state.
-
-        Body force, tractions and stimuli are ramped together over
-        load_steps. Returns the load-case name and the maximum absolute
-        displacement across all ranks.
-        """
-
-        state = self.state
-        body_force = state.body_force
-        traction_constants = state.traction_constants
-        stimuli = state.stimuli
+        """Solve one load case; returns its name and the max |u|."""
 
         load_case_name = load_case.get("name", "unnamed")
-
-        body_force_target = load_case.get(
-            "body_force",
-            np.zeros_like(body_force.value),
-        )
-        traction_targets = load_case.get("tractions", {})
-        stimulus_targets = load_case.get("stimuli", {})
-
-        # Each load case begins from the undeformed state.
-        _zero_function(state.u_field)
-
-        # Begin every load at zero.
-        _set_constant(body_force, body_force_target, scale=0.0)
-
-        for traction in traction_constants.values():
-            _set_constant(traction, np.zeros_like(traction.value))
-
-        for stimulus in stimuli.values():
-            _set_constant(stimulus, np.zeros_like(stimulus.value))
-
-        # Ramp all body forces, tractions, and stimuli together.
-        for step in range(1, self.load_steps + 1):
-            load_fraction = step / self.load_steps
-
-            _set_constant(body_force, body_force_target, scale=load_fraction)
-
-            for traction_name, traction in traction_constants.items():
-                target = traction_targets.get(
-                    traction_name,
-                    np.zeros_like(traction.value),
-                )
-                _set_constant(traction, target, scale=load_fraction)
-
-            for stimulus_name, stimulus in stimuli.items():
-                target = stimulus_targets.get(
-                    stimulus_name,
-                    np.zeros_like(stimulus.value),
-                )
-                _set_constant(stimulus, target, scale=load_fraction)
-
-            state.nonlinear_problem.solve_fem()
-
-        displacement_array = state.u_field.x.array
-
-        if displacement_array.size > 0:
-            local_max_displacement = float(np.max(np.abs(displacement_array)))
-        else:
-            local_max_displacement = 0.0
-
-        max_displacement = self.comm.allreduce(
-            local_max_displacement,
-            op=MPI.MAX,
-        )
+        max_displacement = self.state.solve(load_case, self.load_steps)
 
         return load_case_name, max_displacement
 
