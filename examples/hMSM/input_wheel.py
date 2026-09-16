@@ -454,7 +454,6 @@ output_options = {
         / "results_Wheel_Rotation_PhiTheta"
     ),
     "sim_output_interval": 25,
-    "sim_image_output_interval": 101,
 }
 
 # ============================================================

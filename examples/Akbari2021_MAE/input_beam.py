@@ -277,7 +277,6 @@ output_options = {
         / "results_beam"
     ),
     "sim_output_interval": 10,
-    "sim_image_output_interval": 51,
 }
 
 # ============================================================

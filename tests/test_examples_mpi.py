@@ -63,7 +63,6 @@ def _run_example(script, output_dir):
             output_options = problem.setdefault("output_options", {})
             output_options["output_dir"] = str(output_dir)
             output_options["sim_output_interval"] = 10**9
-            output_options["sim_image_output_interval"] = 10**9
             super().__init__(problem)
 
         def run(self):

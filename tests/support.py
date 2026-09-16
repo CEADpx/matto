@@ -202,7 +202,6 @@ def build_beam_problem(
         "output_options": {
             "output_dir": str(REPO_ROOT / "tests" / "_unused_output"),
             "sim_output_interval": 10**9,
-            "sim_image_output_interval": 10**9,
         },
     }
 

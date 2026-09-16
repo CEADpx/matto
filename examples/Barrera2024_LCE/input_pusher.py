@@ -414,7 +414,6 @@ output_options = {
         / "results_pusher"
     ),
     "sim_output_interval": 25,
-    "sim_image_output_interval": 151,
 }
 
 # ============================================================

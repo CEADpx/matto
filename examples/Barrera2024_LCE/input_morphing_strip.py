@@ -365,7 +365,6 @@ output_options = {
         / "results_u_shape_morphing"
     ),
     "sim_output_interval": 20,
-    "sim_image_output_interval": 126,
 }
 
 # ============================================================

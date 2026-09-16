@@ -374,7 +374,6 @@ output_options = {
         / "results_bridge"
     ),
     "sim_output_interval": 20,
-    "sim_image_output_interval": 101,
 }
 
 # ============================================================
