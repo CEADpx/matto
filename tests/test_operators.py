@@ -23,6 +23,7 @@ from matto.operators import (
     DesignVariable,
     HeavisideProjection,
     HelmholtzFilter,
+    HelmholtzKernel,
     build_operator_chain,
 )
 
@@ -111,7 +112,10 @@ def test_helmholtz_filter_adjoint():
     filtered = Function(functionspace(mesh, ("CG", 1)))
     _set_owned(raw, rng.uniform(0.2, 0.8, raw.x.petsc_vec.array.size))
 
-    operator = HelmholtzFilter(COMM, raw, filtered, radius=0.3, petsc_options=LU)
+    kernel = HelmholtzKernel(
+        COMM, raw.function_space, filtered.function_space, 0.3, LU
+    )
+    operator = HelmholtzFilter(kernel, raw, filtered)
     _check_operator(operator, rng)
 
 

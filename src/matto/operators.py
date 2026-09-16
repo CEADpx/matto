@@ -39,7 +39,7 @@ import numpy as np
 import ufl
 from dolfinx import la
 from dolfinx.fem import Function, form, functionspace
-from dolfinx.fem.petsc import create_matrix, assemble_matrix
+from dolfinx.fem.petsc import assemble_matrix, create_matrix, create_vector
 from petsc4py import PETSc
 
 from .utility import apply_petsc_options
@@ -141,32 +141,25 @@ class Identity(Operator):
         return gradients
 
 
-class HelmholtzFilter(Operator):
+class HelmholtzKernel:
     """
-    PDE filter: solve -R^2 lap(phys) + phys = raw with natural boundary
-    conditions. The raw and filtered fields may live in different spaces.
+    The matrices and solver of a Helmholtz filter for one space pair and radius.
 
-    Written as a linear map phys = Kf^{-1} T raw, the adjoint is
-    T^T Kf^{-1} since Kf is symmetric.
+    Every design field filtered with the same spaces and radius on the
+    same mesh can share one of these; the operators hold only their own
+    bound fields. The work vectors are shared too, which is fine as the
+    operators run one after another.
     """
 
-    def __init__(self, comm, input_field, output_field, radius,
+    def __init__(self, comm, input_space, output_space, radius,
                  petsc_options=None):
-        super().__init__(input_field, output_field)
-
         if petsc_options is None:
             petsc_options = {}
 
         self.radius = float(radius)
 
-        S0, S = input_field.function_space, output_field.function_space
-        u0, u = ufl.TrialFunction(S0), ufl.TrialFunction(S)
-        v, self.af = ufl.TestFunction(S), Function(S)
-
-        self.output_wrap = la.create_petsc_vector_wrap(self.output.x)
-        self.af_wrap = la.create_petsc_vector_wrap(self.af.x)
-        self.vec_s0 = input_field.x.petsc_vec.copy()
-        self.vec_s = output_field.x.petsc_vec.copy()
+        u0, u = ufl.TrialFunction(input_space), ufl.TrialFunction(output_space)
+        v = ufl.TestFunction(output_space)
 
         # Kf and T from the weak form of the Helmholtz equation
         dx = ufl.Measure("dx", metadata={"quadrature_degree": 2})
@@ -189,8 +182,39 @@ class HelmholtzFilter(Operator):
         Kf_mat.assemble()
         assemble_matrix(self.T_mat, T_form)
         self.T_mat.assemble()
-        self.T_mat_transpose = self.T_mat.copy()
-        self.T_mat_transpose.transpose()
+
+        # Right-hand side of the forward solve, and the adjoint solve's
+        # solution, which then goes through T^T.
+        self.rhs = create_vector(form(v*dx))
+        self.af = Function(output_space)
+        self.af_wrap = la.create_petsc_vector_wrap(self.af.x)
+
+    @staticmethod
+    def key(input_space, output_space, radius, petsc_options):
+        """Cache key: same mesh, same elements, same radius, same options."""
+        return (
+            id(input_space.mesh),
+            input_space.ufl_element(),
+            output_space.ufl_element(),
+            float(radius),
+            repr(sorted((petsc_options or {}).items())),
+        )
+
+
+class HelmholtzFilter(Operator):
+    """
+    PDE filter: -R^2 lap(phys) + phys = raw with natural boundary conditions.
+
+    The raw and filtered fields may live in different spaces. Written as
+    a linear map phys = Kf^{-1} T raw, the adjoint is T^T Kf^{-1} since
+    Kf is symmetric.
+    """
+
+    def __init__(self, kernel, input_field, output_field):
+        super().__init__(input_field, output_field)
+
+        self.kernel = kernel
+        self.output_wrap = la.create_petsc_vector_wrap(self.output.x)
 
     @classmethod
     def from_spec(cls, spec, input_field, output_field, context):
@@ -200,34 +224,48 @@ class HelmholtzFilter(Operator):
                 name=f"{context['name']}_filtered_{context['index']}",
             )
 
-        return cls(
-            context["comm"],
-            input_field,
-            output_field,
-            radius=float(spec["radius"]),
-            petsc_options=context["petsc_options"],
+        radius = float(spec["radius"])
+        input_space = input_field.function_space
+        output_space = output_field.function_space
+
+        kernels = context["kernels"]
+        key = HelmholtzKernel.key(
+            input_space, output_space, radius, context["petsc_options"]
         )
+        if key not in kernels:
+            kernels[key] = HelmholtzKernel(
+                context["comm"],
+                input_space,
+                output_space,
+                radius,
+                petsc_options=context["petsc_options"],
+            )
+
+        return cls(kernels[key], input_field, output_field)
 
     def forward(self):
-        self.T_mat.mult(self.input.x.petsc_vec, self.vec_s)
-        self.solver.solve(self.vec_s, self.output_wrap)
+        kernel = self.kernel
+        kernel.T_mat.mult(self.input.x.petsc_vec, kernel.rhs)
+        kernel.solver.solve(kernel.rhs, self.output_wrap)
         self.output.x.scatter_forward()
 
     def backward(self, gradients):
+        kernel = self.kernel
         values = []
         for gradient in gradients:
             if gradient is None:
                 values.append(None)
                 continue
 
-            self.solver.solve(gradient, self.af_wrap)
-            self.af.x.scatter_forward()
-            self.T_mat_transpose.mult(self.af.x.petsc_vec, self.vec_s0)
-            values.append(self.vec_s0.copy())
+            kernel.solver.solve(gradient, kernel.af_wrap)
+            kernel.af.x.scatter_forward()
+            result = self.input.x.petsc_vec.copy()
+            kernel.T_mat.multTranspose(kernel.af.x.petsc_vec, result)
+            values.append(result)
         return values
 
     def describe(self):
-        return f"HelmholtzFilter(R={self.radius:g})"
+        return f"HelmholtzFilter(R={self.kernel.radius:g})"
 
 
 class HeavisideProjection(Operator):
@@ -335,7 +373,8 @@ OPERATOR_TYPES = {
 }
 
 
-def build_operator_chain(name, specs, raw, phys, comm, petsc_options):
+def build_operator_chain(name, specs, raw, phys, comm, petsc_options,
+                         kernels=None):
     """
     Turn the ``operators`` list of an input file into Operator objects.
 
@@ -343,7 +382,14 @@ def build_operator_chain(name, specs, raw, phys, comm, petsc_options):
     field the previous one wrote, and the last one writes phys. An
     operator that is not last allocates its own intermediate field, so
     raw is never overwritten.
+
+    kernels is a dict shared across the design variables of one problem
+    so operators with the same matrices, such as a filter with the same
+    spaces and radius, assemble them once.
     """
+
+    if kernels is None:
+        kernels = {}
 
     if not specs:
         return [Identity(raw, phys)]
@@ -368,6 +414,7 @@ def build_operator_chain(name, specs, raw, phys, comm, petsc_options):
             "comm": comm,
             "petsc_options": petsc_options,
             "physical_space": phys.function_space,
+            "kernels": kernels,
         }
 
         last = index == len(specs) - 1
@@ -402,6 +449,7 @@ class DesignVariable:
         settings,
         mesh,
         petsc_options=None,
+        kernels=None,
     ):
         self.name = name
         self.settings = settings
@@ -468,6 +516,7 @@ class DesignVariable:
                 self.phys,
                 self.comm,
                 petsc_options,
+                kernels=kernels,
             )
         except ValueError as error:
             raise ValueError(

@@ -299,6 +299,7 @@ class OptimizationDriver:
         )
 
         self.design_variables = {}
+        kernels = {}
 
         for name, settings in self.design_settings.items():
             self.design_variables[name] = DesignVariable(
@@ -306,6 +307,7 @@ class OptimizationDriver:
                 mesh=self.mesh,
                 settings=settings,
                 petsc_options=filter_petsc_options,
+                kernels=kernels,
             )
 
         self.active_design_variables = {
