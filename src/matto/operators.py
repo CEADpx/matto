@@ -45,6 +45,15 @@ from petsc4py import PETSc
 from .utility import apply_petsc_options
 
 
+def _same_space(a, b):
+    """Two FunctionSpace objects with the same element on the same mesh.
+
+    dolfinx compares spaces by identity, and a spec like ("CG", 1) builds
+    a new object every time, so compare mesh and element.
+    """
+    return a is b or (a.mesh is b.mesh and a.ufl_element() == b.ufl_element())
+
+
 class Operator(ABC):
     """
     One map in the parameterization chain, together with its adjoint.
@@ -115,7 +124,7 @@ class Identity(Operator):
     def __init__(self, input_field, output_field):
         super().__init__(input_field, output_field)
 
-        if input_field.function_space != output_field.function_space:
+        if not _same_space(input_field.function_space, output_field.function_space):
             raise ValueError(
                 "Identity requires the same function space on both sides."
             )
@@ -230,7 +239,7 @@ class HeavisideProjection(Operator):
                  update_interval, eta=0.5):
         super().__init__(input_field, output_field)
 
-        if input_field.function_space != output_field.function_space:
+        if not _same_space(input_field.function_space, output_field.function_space):
             raise ValueError(
                 "Heaviside projection requires the same function space "
                 "on both sides."
