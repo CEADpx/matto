@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
-from dolfinx.mesh import CellType, create_rectangle
+from dolfinx.mesh import CellType, create_box, create_rectangle
 from mpi4py import MPI
 
 from matto.design import volume_constraint
@@ -259,6 +259,66 @@ def build_mae_beam_problem(comm, nx, ny, load_steps, max_iter=1):
         }
 
     problem["build_constraints"] = build_constraints
+    return problem
+
+
+def build_hmsm_beam_3d_problem(comm, nx, ny, nz, load_steps, max_iter=1):
+    """
+    The hMSM beam as a 3D box.
+
+    Same fields, same material with dim=3, traction and applied field
+    along z. The 2D problem supplies everything that is not
+    dimension-specific.
+    """
+
+    problem = build_beam_problem(
+        comm, nx=nx, ny=ny, load_steps=load_steps, max_iter=max_iter
+    )
+
+    depth = BEAM_HEIGHT
+    problem["mesh"] = create_box(
+        comm,
+        [[0.0, 0.0, 0.0], [BEAM_LENGTH, BEAM_HEIGHT, depth]],
+        [nx, ny, nz],
+        CellType.hexahedron,
+    )
+    problem["mesh_serial"] = None
+
+    # The finite-difference check passes only with the filter solved
+    # directly: with CG/GAMG at the default tolerance the rho gradient is
+    # 8 percent off the finite difference, and tightening the Newton
+    # tolerance does not change it.
+    problem["fem_options"]["solver_options"]["filter"]["petsc_options"] = {
+        "ksp_type": "preonly", "pc_type": "lu",
+    }
+
+    parameters = dict(problem["material_parameters"], dim=3)
+    problem["material_parameters"] = parameters
+    problem["material"] = HardMagneticSoftMaterial(**parameters)
+
+    problem["boundary_conditions"] = [
+        {
+            "name": "clamped_left",
+            "on_boundary": lambda x: np.isclose(x[0], 0.0),
+            "value": (0.0, 0.0, 0.0),
+        },
+    ]
+    problem["load_cases"] = [
+        {
+            "name": "traction_down_B_up",
+            "weight": 1.0,
+            "body_force": (0.0, 0.0, 0.0),
+            "tractions": {"out_right": (0.0, 0.0, -0.50)},
+            "stimuli": {"B_app": (0.0, 0.0, 25.0)},
+        },
+        {
+            "name": "traction_up_B_down",
+            "weight": 1.0,
+            "body_force": (0.0, 0.0, 0.0),
+            "tractions": {"out_right": (0.0, 0.0, 0.50)},
+            "stimuli": {"B_app": (0.0, 0.0, -25.0)},
+        },
+    ]
     return problem
 
 

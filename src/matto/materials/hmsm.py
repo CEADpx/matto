@@ -16,18 +16,30 @@ class HardMagneticSoftMaterial(Material):
     the design direction theta.
 
     Fields: rho (density), phi (particle fraction), theta (remanent
-    direction). Stimulus: B_app, in-plane applied flux density.
+    direction). Stimulus: B_app, the applied flux density vector.
+
+    Works in 2D and 3D; pass dim=3 for a 3D problem. theta is one
+    angle in both cases: in 3D the remanent magnetization lies in the
+    x-y plane at that angle, and the applied field may point anywhere.
     """
 
     fields = ("rho", "phi", "theta")
-    stimuli = {"B_app": (2,)}
     parameters = {
         "G0": None,          # matrix shear modulus
         "p_rho": 3.0,
         "eps_rho": 1.0e-6,
         "mu0": None,         # vacuum permeability
         "B_rem_mag": None,   # remanent flux density magnitude
+        "dim": 2,
     }
+
+    def __init__(self, **parameters):
+        super().__init__(**parameters)
+
+        if self.dim not in (2, 3):
+            raise ValueError("HardMagneticSoftMaterial needs dim=2 or dim=3.")
+
+        self.stimuli = {"B_app": (self.dim,)}
     reference = (
         "Galloway & Jha, Model-informed joint material-structural "
         "optimization of hard-magnetic soft materials, arXiv:2607.14397"
@@ -57,7 +69,7 @@ class HardMagneticSoftMaterial(Material):
             + (K / 2.0) * (J - 1.0)**2
         )
 
-        B_rem = self.B_rem_mag * director(theta_phys)
+        B_rem = self.B_rem_mag * director(theta_phys, dim=self.dim)
         phi_eff = rho_phys * phi_phys
 
         W_magnetic = -(1.0 / self.mu0) * phi_eff * ufl.inner(F * B_rem, B_app)

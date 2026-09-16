@@ -22,8 +22,8 @@ class Material:
     #: which of them are optimized and which are prescribed
     fields = ()
 
-    #: stimulus name -> shape, () for a scalar and (2,) for an in-plane
-    #: vector; the load cases supply the values
+    #: stimulus name -> shape, () for a scalar and (dim,) for a vector;
+    #: the load cases supply the values
     stimuli = {}
 
     #: parameter name -> default, or None when the caller must supply it

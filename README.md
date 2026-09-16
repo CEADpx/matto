@@ -59,6 +59,7 @@ The hMSM inputs combine a particle-reinforced hyperelastic energy with magnetic 
 #### Rotational actuator
 
 [`input_wheel.py`](examples/hMSM/input_wheel.py) optimizes `phi` and `theta` in a fixed wheel geometry to increase counterclockwise rotation under an applied magnetic field.
+[`input_beam_3d.py`](examples/hMSM/input_beam_3d.py) is the restorative beam in 3D with `rho`, `phi` and `theta` all active; the remanent magnetization lies in the x-y plane and the applied field points out of it.
 
 ![Rotational actuator optimization](docs/assets/wheel_opt.png)
 

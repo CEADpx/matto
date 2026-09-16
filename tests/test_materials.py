@@ -49,6 +49,11 @@ def test_material_is_consistent(material, stimulus_values):
     check_material(material, stimulus_values=stimulus_values)
 
 
+def test_hmsm_is_consistent_in_3d():
+    material = HardMagneticSoftMaterial(G0=100.0, mu0=1.256e3, B_rem_mag=200.0, dim=3)
+    check_material(material, stimulus_values={"B_app": (5.0, 0.0, 25.0)}, dim=3)
+
+
 def test_material_refuses_unknown_and_missing_parameters():
     with pytest.raises(TypeError, match="needs values"):
         HardMagneticSoftMaterial(G0=100.0)

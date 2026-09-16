@@ -11,6 +11,7 @@ from mpi4py import MPI
 from tests.support import (
     BeamSession,
     build_beam_problem,
+    build_hmsm_beam_3d_problem,
     build_mae_beam_problem,
 )
 
@@ -29,13 +30,20 @@ def _relative_error(adjoint_value, finite_difference):
     return abs(adjoint_value - finite_difference) / scale
 
 
+def _build_3d(comm, nx, ny, load_steps):
+    # The 3D box needs a gentler ramp than the plane-strain beam for
+    # Newton to follow it on a mesh this coarse.
+    return build_hmsm_beam_3d_problem(comm, nx, ny, ny, 2 * load_steps)
+
+
 @pytest.mark.parametrize(
     ("build", "active_fields"),
     [
         (build_beam_problem, ("rho", "phi", "theta")),
         (build_mae_beam_problem, ("phi",)),
+        (_build_3d, ("rho", "phi", "theta")),
     ],
-    ids=["hmsm_three_fields", "mae_one_field"],
+    ids=["hmsm_three_fields", "mae_one_field", "hmsm_three_fields_3d"],
 )
 def test_coarse_beam_adjoint_matches_finite_difference(build, active_fields):
     problem = build(

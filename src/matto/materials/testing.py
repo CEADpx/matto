@@ -19,7 +19,7 @@ import numpy as np
 import ufl
 from dolfinx.fem import Constant, Function, assemble_scalar, form, functionspace
 from dolfinx.fem.petsc import assemble_vector
-from dolfinx.mesh import CellType, create_rectangle
+from dolfinx.mesh import CellType, create_box, create_rectangle
 from mpi4py import MPI
 from petsc4py import PETSc
 
@@ -27,35 +27,46 @@ DEFAULT_FIELD_VALUES = {"rho": 1.0, "phi": 0.5, "theta": 0.3}
 
 
 def _affine_displacement(u, F0):
-    A = np.asarray(F0) - np.eye(2)
-    u.interpolate(lambda x: np.vstack((
-        A[0, 0] * x[0] + A[0, 1] * x[1],
-        A[1, 0] * x[0] + A[1, 1] * x[1],
-    )))
+    dim = F0.shape[0]
+    A = np.asarray(F0) - np.eye(dim)
+    u.interpolate(lambda x: np.vstack([
+        sum(A[i, j] * x[j] for j in range(dim)) for i in range(dim)
+    ]))
     u.x.scatter_forward()
 
 
-def _rotation(angle):
+def _rotation(angle, dim):
     c, s = np.cos(angle), np.sin(angle)
-    return np.array([[c, -s], [s, c]])
+    if dim == 2:
+        return np.array([[c, -s], [s, c]])
+    # about the z axis, then tilted about x so the rotation is not in-plane
+    Rz = np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
+    t = 0.4
+    Rx = np.array([[1.0, 0.0, 0.0], [0.0, np.cos(t), -np.sin(t)], [0.0, np.sin(t), np.cos(t)]])
+    return Rx @ Rz
 
 
 def check_material(material, field_values=None, stimulus_values=None,
                    comm=MPI.COMM_WORLD, stretch=None, rotation=0.7,
-                   rel_tol=1.0e-8):
+                   rel_tol=1.0e-8, dim=2):
     """
     Raise AssertionError with a message naming the failed check.
 
     field_values: name -> constant value for each field the material
         reads; defaults cover rho, phi, theta.
     stimulus_values: name -> value; defaults to zero for every stimulus.
+    dim: 2 or 3, the dimension the material is meant for.
     """
 
-    mesh = create_rectangle(comm, [[0.0, 0.0], [1.0, 1.0]], [2, 2],
-                            CellType.quadrilateral)
+    if dim == 2:
+        mesh = create_rectangle(comm, [[0.0, 0.0], [1.0, 1.0]], [2, 2],
+                                CellType.quadrilateral)
+    else:
+        mesh = create_box(comm, [[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]], [2, 2, 2],
+                          CellType.hexahedron)
     dx = ufl.Measure("dx", domain=mesh, metadata={"quadrature_degree": 2})
 
-    V = functionspace(mesh, ("Lagrange", 1, (2,)))
+    V = functionspace(mesh, ("Lagrange", 1, (dim,)))
     S = functionspace(mesh, ("Lagrange", 1))
     u = Function(V)
     v = ufl.TestFunction(V)
@@ -71,7 +82,7 @@ def check_material(material, field_values=None, stimulus_values=None,
         value = (stimulus_values or {}).get(name, np.zeros(shape))
         stimuli[name] = Constant(mesh, np.asarray(value, dtype=PETSc.ScalarType))
 
-    F = ufl.variable(ufl.Identity(2) + ufl.grad(u))
+    F = ufl.variable(ufl.Identity(dim) + ufl.grad(u))
     W = material.energy(F, fields, stimuli)
     P = ufl.diff(W, F)
 
@@ -86,13 +97,18 @@ def check_material(material, field_values=None, stimulus_values=None,
         b.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
         return b.norm()
 
-    F0 = np.array([[1.15, 0.10], [0.05, 0.92]]) if stretch is None else np.asarray(stretch)
-    Q = _rotation(rotation)
+    if stretch is not None:
+        F0 = np.asarray(stretch)
+    elif dim == 2:
+        F0 = np.array([[1.15, 0.10], [0.05, 0.92]])
+    else:
+        F0 = np.array([[1.15, 0.10, 0.02], [0.05, 0.92, -0.03], [0.01, 0.04, 1.05]])
+    Q = _rotation(rotation, dim)
 
     def set_stimuli(rotated):
         for name, shape in material.stimuli.items():
             value = np.asarray((stimulus_values or {}).get(name, np.zeros(shape)), dtype=float)
-            if rotated and tuple(shape) == (2,):
+            if rotated and tuple(shape) == (dim,):
                 value = Q @ value
             stimuli[name].value[...] = value
 
@@ -105,7 +121,7 @@ def check_material(material, field_values=None, stimulus_values=None,
 
     # 1. stress-free reference at zero stimulus
     zero_stimuli()
-    _affine_displacement(u, np.eye(2))
+    _affine_displacement(u, np.eye(dim))
     reference_force = force_norm()
     W_reference = total_energy()
     _affine_displacement(u, F0)

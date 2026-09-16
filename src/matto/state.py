@@ -97,10 +97,10 @@ class StateProblem:
         self.dim = self.mesh.geometry.dim
         self.fdim = self.mesh.topology.dim - 1
 
-        if self.dim != 2:
+        if self.dim not in (2, 3):
             raise ValueError(
-                "The current multimaterial optimization framework "
-                "supports only 2D problems."
+                f"The mesh has geometric dimension {self.dim}; "
+                "2D and 3D problems are supported."
             )
 
         self._build_displacement_space()
