@@ -8,8 +8,9 @@ import numpy as np
 from dolfinx.mesh import CellType, create_rectangle
 from mpi4py import MPI
 
+from matto.design import volume_constraint
 from matto.driver import OptimizationDriver
-from matto.materials import HardMagneticSoftMaterial
+from matto.materials import HardMagneticSoftMaterial, MagnetoActiveElastomer
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -204,6 +205,61 @@ def build_beam_problem(
             "sim_output_interval": 10**9,
         },
     }
+
+
+def build_mae_beam_problem(comm, nx, ny, load_steps, max_iter=1):
+    """
+    The hMSM cantilever with the isotropic MAE and one active field.
+
+    rho is prescribed solid and phi, the magnetic fraction, is optimized
+    under a downward traction with the field on. Built from the 2D hMSM
+    problem so the two share every setting that is not material-specific.
+    """
+
+    problem = build_beam_problem(
+        comm, nx=nx, ny=ny, load_steps=load_steps, max_iter=max_iter
+    )
+
+    mu0 = 4.0 * np.pi * 1.0e-7
+    problem["material"] = MagnetoActiveElastomer(
+        C1_Ga=108.0, C2_Ga=137.0, a1=4.97, a2=9.147 * mu0,
+        b1=174.685, b2=13.024 * mu0, C1_sil=270.0, C2_sil=10.8,
+        K=12000.0, mu0=mu0,
+    )
+
+    problem["design_variables"] = {
+        "rho": {
+            "active": False,
+            "initial": 1.0,
+            "bounds": (0.05, 1.0),
+            "operators": [{"type": "density_filter", "radius": 1.0}],
+        },
+        "phi": {
+            "active": True,
+            "initial": 0.30,
+            "bounds": (0.0, 1.0),
+            "operators": [{"type": "density_filter", "radius": 1.0}],
+        },
+    }
+
+    problem["load_cases"] = [
+        {
+            "name": "field_on",
+            "weight": 1.0,
+            "body_force": (0.0, 0.0),
+            "tractions": {"out_right": (0.0, -0.50)},
+            "stimuli": {"h": 0.45},
+        },
+    ]
+
+    def build_constraints(design_variables, dx):
+        phi_phys = design_variables["phi"].phys
+        return {
+            "magnetic_material_fraction": volume_constraint(phi_phys, 0.30, dx),
+        }
+
+    problem["build_constraints"] = build_constraints
+    return problem
 
 
 class BeamSession:

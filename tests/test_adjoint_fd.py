@@ -1,9 +1,18 @@
-"""Finite-difference check of the restorative-beam adjoint on a coarse mesh."""
+"""
+Finite-difference check of the adjoint on coarse beams.
+
+The hMSM beam has three active fields; the isotropic MAE beam has one.
+"""
 
 import numpy as np
+import pytest
 from mpi4py import MPI
 
-from tests.support import BeamSession, build_beam_problem
+from tests.support import (
+    BeamSession,
+    build_beam_problem,
+    build_mae_beam_problem,
+)
 
 COMM = MPI.COMM_WORLD
 STEP = 1.0e-5
@@ -20,8 +29,16 @@ def _relative_error(adjoint_value, finite_difference):
     return abs(adjoint_value - finite_difference) / scale
 
 
-def test_coarse_beam_adjoint_matches_finite_difference():
-    problem = build_beam_problem(
+@pytest.mark.parametrize(
+    ("build", "active_fields"),
+    [
+        (build_beam_problem, ("rho", "phi", "theta")),
+        (build_mae_beam_problem, ("phi",)),
+    ],
+    ids=["hmsm_three_fields", "mae_one_field"],
+)
+def test_coarse_beam_adjoint_matches_finite_difference(build, active_fields):
+    problem = build(
         COMM,
         nx=12,
         ny=3,
@@ -32,7 +49,7 @@ def test_coarse_beam_adjoint_matches_finite_difference():
     assert np.isfinite(objective)
 
     rng = np.random.default_rng(0)
-    for name in ("rho", "phi", "theta"):
+    for name in active_fields:
         base = session.raw_values(name)
         direction = rng.standard_normal(base.size)
         direction_norm = COMM.allreduce(
