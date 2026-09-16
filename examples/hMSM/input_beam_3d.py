@@ -1,7 +1,10 @@
 # Restorative beam in 3D
-# rho, phi and theta all active. theta is the in-plane (x-y) angle of the
-# remanent magnetization; the applied field is out of plane so the
-# magnetic torque bends the beam in z, against the traction.
+# The 3D counterpart of the plane-strain beam. rho, phi and theta all
+# active; theta is the angle of the remanent magnetization in the x-y
+# plane, and the applied field and the traction stay in that plane,
+# along y, so the magnetic torque bends the beam about z against the
+# traction. A field along z with theta free gives a torque about the
+# beam axis, m_y x B_z, and a twisted design.
 from pathlib import Path
 
 import numpy as np
@@ -118,15 +121,15 @@ load_cases = [
         "name": "traction_down_B_up",
         "weight": 1.0,
         "body_force": (0.0, 0.0, 0.0),
-        "tractions": {"out_right": (0.0, 0.0, -0.50)},
-        "stimuli": {"B_app": (0.0, 0.0, 25.0)},
+        "tractions": {"out_right": (0.0, -0.50, 0.0)},
+        "stimuli": {"B_app": (0.0, 25.0, 0.0)},
     },
     {
         "name": "traction_up_B_down",
         "weight": 1.0,
         "body_force": (0.0, 0.0, 0.0),
-        "tractions": {"out_right": (0.0, 0.0, 0.50)},
-        "stimuli": {"B_app": (0.0, 0.0, -25.0)},
+        "tractions": {"out_right": (0.0, 0.50, 0.0)},
+        "stimuli": {"B_app": (0.0, -25.0, 0.0)},
     },
 ]
 

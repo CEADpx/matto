@@ -264,11 +264,11 @@ def build_mae_beam_problem(comm, nx, ny, load_steps, max_iter=1):
 
 def build_hmsm_beam_3d_problem(comm, nx, ny, nz, load_steps, max_iter=1):
     """
-    The hMSM beam as a 3D box.
+    The hMSM beam extruded in z.
 
     Same fields, same material with dim=3, traction and applied field
-    along z. The 2D problem supplies everything that is not
-    dimension-specific.
+    along y as in the plane-strain problem. The 2D problem supplies
+    everything that is not dimension-specific.
     """
 
     problem = build_beam_problem(
@@ -308,15 +308,15 @@ def build_hmsm_beam_3d_problem(comm, nx, ny, nz, load_steps, max_iter=1):
             "name": "traction_down_B_up",
             "weight": 1.0,
             "body_force": (0.0, 0.0, 0.0),
-            "tractions": {"out_right": (0.0, 0.0, -0.50)},
-            "stimuli": {"B_app": (0.0, 0.0, 25.0)},
+            "tractions": {"out_right": (0.0, -0.50, 0.0)},
+            "stimuli": {"B_app": (0.0, 25.0, 0.0)},
         },
         {
             "name": "traction_up_B_down",
             "weight": 1.0,
             "body_force": (0.0, 0.0, 0.0),
-            "tractions": {"out_right": (0.0, 0.0, 0.50)},
-            "stimuli": {"B_app": (0.0, 0.0, -25.0)},
+            "tractions": {"out_right": (0.0, 0.50, 0.0)},
+            "stimuli": {"B_app": (0.0, -25.0, 0.0)},
         },
     ]
     return problem
