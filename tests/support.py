@@ -14,7 +14,7 @@ from petsc4py import PETSc
 from matto.state import StateProblem
 from matto.operators import DesignVariable
 from matto.sensitivity import Sensitivity
-from matto.topopt import (
+from matto.driver import (
     _owned_gradient,
     _owned_size,
     _owned_values,
