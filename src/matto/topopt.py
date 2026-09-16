@@ -33,7 +33,7 @@ from dolfinx import fem
 from mpi4py import MPI
 from petsc4py import PETSc
 
-from .fem import form_fem
+from .state import StateProblem
 from .optimize import DEFAULT_MOVE, mma_optimizer
 from .operators import DesignVariable
 from .sensitivity import Sensitivity
@@ -495,28 +495,24 @@ def topopt(problem):
     # FEM and sensitivity construction
     # ============================================================
 
-    fem_data = form_fem(
+    state = StateProblem(
         problem,
         design_variables,
     )
 
     sensitivity = Sensitivity(
         comm,
-        fem_data,
+        state,
     )
 
-    fem_problem = fem_data["fem_problem"]
-    u_field = fem_data["u_field"]
+    fem_problem = state.nonlinear_problem
+    u_field = state.u_field
 
-    body_force = fem_data["body_force"]
-    traction_constants = fem_data[
-        "traction_constants"
-    ]
-    stimuli = fem_data["stimuli"]
+    body_force = state.body_force
+    traction_constants = state.traction_constants
+    stimuli = state.stimuli
 
-    constraint_names = list(
-        fem_data["constraints"].keys()
-    )
+    constraint_names = list(state.constraints)
 
     if len(constraint_names) == 0:
         raise ValueError(
@@ -644,13 +640,7 @@ def topopt(problem):
 
     comm.barrier()
 
-    available_outputs = fem_data.get(
-        "output_fields",
-        fem_data.get(
-            "output_expressions",
-            {},
-        ),
-    )
+    available_outputs = state.output_fields
 
     (
         output_functions,

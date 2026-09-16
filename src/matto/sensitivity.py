@@ -43,7 +43,8 @@ class Sensitivity:
 
     This class does not know anything about rho, phi, theta, or any
     particular material model. It works with whichever active design
-    variables were created by operators.py.
+    variables were created by operators.py; the forms come from
+    state.py.
 
     The returned physical-field gradients are later passed through each
     design variable's backward operator chain:
@@ -54,22 +55,22 @@ class Sensitivity:
             -> raw-design gradient
     """
 
-    def __init__(self, comm, fem_data):
+    def __init__(self, comm, state):
         self.comm = comm
 
         # ============================================================
         # FEM data
         # ============================================================
 
-        self.fem_problem = fem_data["fem_problem"]
+        self.fem_problem = state.nonlinear_problem
 
-        self.u_field = fem_data["u_field"]
-        self.lambda_field = fem_data["lambda_field"]
+        self.u_field = state.u_field
+        self.lambda_field = state.lambda_field
 
-        self.objective_ufl = fem_data["objective_form"]
-        self.internal_force_ufl = fem_data["internal_force_form"]
+        self.objective_ufl = state.objective_form
+        self.internal_force_ufl = state.internal_force_form
 
-        self.all_design_variables = fem_data["design_variables"]
+        self.all_design_variables = state.design_variables
 
         self.active_design_variables = {
             name: variable
@@ -238,10 +239,7 @@ class Sensitivity:
         # Adjoint solver
         # ============================================================
 
-        adjoint_options = fem_data.get(
-            "solver_options",
-            {},
-        ).get("adjoint", {})
+        adjoint_options = state.solver_options["adjoint"]
 
         self.adjoint_solver = PETSc.KSP().create(
             self.comm
@@ -274,19 +272,7 @@ class Sensitivity:
 
         self.constraints = {}
 
-        constraint_definitions = fem_data.get(
-            "constraints",
-            {},
-        )
-
-        if not isinstance(constraint_definitions, dict):
-            raise TypeError(
-                "fem_data['constraints'] must be a dictionary."
-            )
-
-        for constraint_name, specification in (
-            constraint_definitions.items()
-        ):
+        for constraint_name, specification in state.constraints.items():
             self._initialize_constraint(
                 constraint_name,
                 specification,

@@ -11,7 +11,7 @@ from dolfinx.mesh import CellType, create_rectangle
 from mpi4py import MPI
 from petsc4py import PETSc
 
-from matto.fem import form_fem
+from matto.state import StateProblem
 from matto.operators import DesignVariable
 from matto.sensitivity import Sensitivity
 from matto.topopt import (
@@ -258,13 +258,13 @@ class BeamSession:
                 petsc_options=filter_petsc,
             )
 
-        self.fem_data = form_fem(problem, self.design_variables)
-        self.sensitivity = Sensitivity(self.comm, self.fem_data)
-        self.fem_problem = self.fem_data["fem_problem"]
-        self.u_field = self.fem_data["u_field"]
-        self.body_force = self.fem_data["body_force"]
-        self.traction_constants = self.fem_data["traction_constants"]
-        self.stimuli = self.fem_data["stimuli"]
+        self.state = StateProblem(problem, self.design_variables)
+        self.sensitivity = Sensitivity(self.comm, self.state)
+        self.fem_problem = self.state.nonlinear_problem
+        self.u_field = self.state.u_field
+        self.body_force = self.state.body_force
+        self.traction_constants = self.state.traction_constants
+        self.stimuli = self.state.stimuli
 
         for variable in self.design_variables.values():
             variable.forward(iteration=1)

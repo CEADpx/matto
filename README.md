@@ -138,7 +138,7 @@ MatTO
 
 ### Core package (`src/matto`)
 
-- **[`src/matto/fem.py`](src/matto/fem.py):** Builds the material-independent nonlinear finite-element problem from the functions and settings supplied by an input script. It constructs the residual, tangent, objective, constraints, load cases, and derivative forms.
+- **[`src/matto/state.py`](src/matto/state.py):** `StateProblem`, the material-independent nonlinear finite-element problem built from the functions and settings supplied by an input script: displacement space, boundary conditions, load constants, residual, objective, constraints and derivative forms.
 - **[`src/matto/topopt.py`](src/matto/topopt.py):** Orchestrates the optimization loop, active design variables, continuation, load-case solves, sensitivity evaluation, MMA updates, convergence checks, and output writing.
 - **[`src/matto/sensitivity.py`](src/matto/sensitivity.py):** Evaluates objective and constraint derivatives using direct terms and nonlinear adjoint solves.
 - **[`src/matto/operators.py`](src/matto/operators.py):** Defines the generic `DesignVariable` representation and the operator chain (Helmholtz filter, Heaviside projection) that maps raw design fields to physical ones and carries sensitivities back.
