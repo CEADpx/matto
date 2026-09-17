@@ -21,6 +21,8 @@ EXAMPLES = [
     ("examples/hMSM/input_scissor.py", 1.420926e00),
     ("examples/hMSM/input_wheel.py", -2.450457e02),
     ("examples/hMSM/input_beam_3d.py", 8.027424e02),
+    ("examples/linear_elastic/input_beam_2d.py", 3.910278e00),
+    ("examples/linear_elastic/input_beam_3d.py", 2.051331e03),
     ("examples/Akbari2021_MAE/input_beam.py", 3.008104e01),
     ("examples/Akbari2021_MAE/input_bridge.py", 2.097988e00),
     ("examples/Garai2025_MAE/input_beam.py", 1.579665e01),

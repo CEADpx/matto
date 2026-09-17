@@ -6,6 +6,7 @@ import pytest
 from matto.materials import (
     AnisotropicMagnetoActiveElastomer,
     HardMagneticSoftMaterial,
+    LinearElastic,
     LiquidCrystalElastomer,
     MagnetoActiveElastomer,
     check_material,
@@ -47,6 +48,13 @@ CASES = [
 )
 def test_material_is_consistent(material, stimulus_values):
     check_material(material, stimulus_values=stimulus_values)
+
+
+def test_linear_elastic_reference_is_stress_free_and_stable():
+    # Small-strain model: no frame-indifference check by construction.
+    material = LinearElastic(E=100.0, nu=0.25)
+    check_material(material, dim=2, frame_indifference=False)
+    check_material(material, dim=3, frame_indifference=False)
 
 
 def test_hmsm_is_consistent_in_3d():

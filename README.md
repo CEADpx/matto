@@ -149,6 +149,8 @@ MatTO
 
 ### Example directories
 
+[`examples/linear_elastic/`](examples/linear_elastic/) holds 2D and 3D compliance-minimization cantilevers with the `LinearElastic` material, set up like FEniTop's cantilever examples so the two codes can be compared.
+
 Each example directory contains the input scripts for one material family and their result summaries; the family's model lives in `matto.materials`. The `matto` package remains independent of the material family. Solver settings live in `fem_options["solver_options"]` as separate `state`, `adjoint`, and `filter` blocks.
 
 ## Installation

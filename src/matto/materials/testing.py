@@ -48,7 +48,7 @@ def _rotation(angle, dim):
 
 def check_material(material, field_values=None, stimulus_values=None,
                    comm=MPI.COMM_WORLD, stretch=None, rotation=0.7,
-                   rel_tol=1.0e-8, dim=2):
+                   rel_tol=1.0e-8, dim=2, frame_indifference=True):
     """
     Raise AssertionError with a message naming the failed check.
 
@@ -56,6 +56,8 @@ def check_material(material, field_values=None, stimulus_values=None,
         reads; defaults cover rho, phi, theta.
     stimulus_values: name -> value; defaults to zero for every stimulus.
     dim: 2 or 3, the dimension the material is meant for.
+    frame_indifference: skip check 2 for a small-strain model that is
+        not objective by construction.
     """
 
     if dim == 2:
@@ -143,6 +145,9 @@ def check_material(material, field_values=None, stimulus_values=None,
     )
 
     # 2. frame indifference, with the stimulus present
+    if not frame_indifference:
+        return report
+
     set_stimuli(rotated=False)
     _affine_displacement(u, F0)
     W_unrotated = total_energy()

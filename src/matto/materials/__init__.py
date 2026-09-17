@@ -9,6 +9,7 @@ testing.check_material for what a model is expected to satisfy.
 from .base import Material
 from .hmsm import HardMagneticSoftMaterial
 from .lce import LiquidCrystalElastomer
+from .linear import LinearElastic
 from .mae import MagnetoActiveElastomer
 from .mae_aniso import AnisotropicMagnetoActiveElastomer
 from .interpolation import simp, two_phase
@@ -19,6 +20,7 @@ __all__ = [
     "Material",
     "HardMagneticSoftMaterial",
     "LiquidCrystalElastomer",
+    "LinearElastic",
     "MagnetoActiveElastomer",
     "AnisotropicMagnetoActiveElastomer",
     "simp", "two_phase",
