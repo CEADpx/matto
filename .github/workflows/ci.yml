@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ruff
+      - run: ruff check src/ tests/ examples/
+
+  test:
+    runs-on: ubuntu-latest
+    # The dolfinx image matches environment.yml's fenics-dolfinx=0.9.0 and
+    # carries PETSc with MUMPS, which the parallel direct solves need.
+    container:
+      image: dolfinx/dolfinx:v0.9.0
+    env:
+      OMPI_ALLOW_RUN_AS_ROOT: "1"
+      OMPI_ALLOW_RUN_AS_ROOT_CONFIRM: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m pip install ".[test]"
+      - name: Serial suite
+        run: python3 -m pytest
+      - name: Two ranks
+        run: mpirun -n 2 python3 -m pytest
+      - name: Examples, one iteration each
+        run: mpirun -n 2 python3 -m pytest -m examples

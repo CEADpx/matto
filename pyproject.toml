@@ -29,6 +29,12 @@ where = ["src"]
 test = ["pytest"]
 docs = ["sphinx", "pydata-sphinx-theme"]
 
+[tool.ruff.lint]
+# pyflakes and the pycodestyle error classes; E741 is off because I is
+# the identity tensor.
+select = ["E4", "E7", "E9", "F"]
+ignore = ["E741"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q -m 'not examples'"
