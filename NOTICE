@@ -1,0 +1,41 @@
+MatTO is Copyright (c) 2025-2026 Ian Galloway and Prashant K. Jha and is
+distributed under the GNU General Public License, version 3 or later
+(see LICENSE.txt).
+
+MatTO began as a fork of FEniTop (Yingqi Jia, Chao Wang and Xiaojia
+Shelly Zhang, "FEniTop: a simple FEniCSx implementation for 2D and 3D
+topology optimization supporting parallel computing", Structural and
+Multidisciplinary Optimization 67, 140 (2024),
+doi:10.1007/s00158-024-03818-7), also GPL-3.0. What remains of FEniTop's
+code, by file:
+
+  src/matto/mma.py       The MMA solver and its subproblem solve are
+                         FEniTop's, modified to take the communicator
+                         as an argument and without the
+                         optimality-criteria update. 250 of 263 code
+                         lines are FEniTop's.
+
+  src/matto/utility.py   Communicator (the serial/parallel dof map used
+                         to gather fields for the saved arrays) and
+                         compare_matrices are FEniTop's. 54 of 232 code
+                         lines.
+
+  src/matto/design.py    The Helmholtz filter assembly in HelmholtzKernel
+                         (the Kf and T forms, their matrices and solver
+                         setup) and the smoothed-Heaviside projection
+                         formula in HeavisideProjection are FEniTop's
+                         DensityFilter and Heaviside, rewritten behind
+                         the Operator interface. 11 of 572 code lines
+                         are verbatim.
+
+src/matto/driver.py, state.py and sensitivity.py began as modified
+copies of FEniTop's topopt.py, fem.py and sensitivity.py and were
+rewritten for a nonlinear state problem, several design fields and
+several load cases; no FEniTop code remains in them. The sensitivity
+follows the same approach of differentiating the UFL forms with respect
+to the physical field and solving an adjoint, generalized to the
+nonlinear residual. The material models, the Material contract, the
+tests and the examples are MatTO's.
+
+The FEniTop copyright notice is kept on the three files that contain
+FEniTop code. The git history records the lineage of the rest.

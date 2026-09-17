@@ -1,21 +1,12 @@
+# Copyright (c) 2025-2026 Ian Galloway, Prashant K. Jha
+# Copyright (c) 2024 Yingqi Jia, Chao Wang, Xiaojia Shelly Zhang (FEniTop)
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Communicator and compare_matrices are FEniTop's. See NOTICE.
 """
-Authors:
-- Yingqi Jia (yingqij2@illinois.edu)
-- Chao Wang (chaow4@illinois.edu)
-- Xiaojia Shelly Zhang (zhangxs@illinois.edu)
-
-Reference:
-- Jia, Y., Wang, C. & Zhang, X.S. FEniTop: a simple FEniCSx implementation
-  for 2D and 3D topology optimization supporting parallel computing.
-  Struct Multidisc Optim 67, 140 (2024).
-  https://doi.org/10.1007/s00158-024-03818-7
-
-Major modifications:
-- Ian Galloway (ian.galloway@mines.sdsmt.edu)
-- Prashant K. Jha (pjha.sci@gmail.com)
-
-Major additions to utility.py:
-- WrapNonlinearProblem for nonlinear hyperelastic FEM solves
+Solver options and their defaults, the Newton wrapper for the state
+problem, and the gather of a parallel field into serial ordering for
+the saved arrays.
 """
 
 from dolfinx.fem.petsc import NonlinearProblem as DolfinxNonlinearProblem

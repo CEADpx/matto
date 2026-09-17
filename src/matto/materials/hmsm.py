@@ -1,4 +1,6 @@
-"""Hard-magnetic soft material, plane strain."""
+# Copyright (c) 2025-2026 Ian Galloway, Prashant K. Jha
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Hard-magnetic soft material, in 2D plane strain or 3D."""
 
 import ufl
 

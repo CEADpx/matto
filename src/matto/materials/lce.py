@@ -1,3 +1,5 @@
+# Copyright (c) 2025-2026 Ian Galloway, Prashant K. Jha
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Liquid crystal elastomer, plane strain, small-strain energy."""
 
 import ufl

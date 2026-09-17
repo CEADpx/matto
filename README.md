@@ -254,4 +254,4 @@ If you use MatTO, please cite the software and the publication associated with t
 
 ## Acknowledgments
 
-MatTO is derived from [FEniTop](https://github.com/missionlab/fenitop), originally developed by Yingqi Jia, Chao Wang, and Xiaojia Shelly Zhang. The present framework contains major modifications by Ian Galloway and Prashant K. Jha for nonlinear, stimulus-responsive, and multimaterial optimization.
+MatTO began as a fork of [FEniTop](https://github.com/missionlab/fenitop) by Yingqi Jia, Chao Wang, and Xiaojia Shelly Zhang. Its MMA solver, the parallel gather in `utility.py`, and the filter and projection kernels in `design.py` are FEniTop's; the rest was written by Ian Galloway and Prashant K. Jha for nonlinear, stimulus-responsive, and multimaterial optimization. `NOTICE` gives the account file by file.

@@ -1,23 +1,10 @@
+# Copyright (c) 2025-2026 Ian Galloway, Prashant K. Jha
+# SPDX-License-Identifier: GPL-3.0-or-later
 """
-Original FEniTop authors:
-- Yingqi Jia (yingqij2@illinois.edu)
-- Chao Wang (chaow4@illinois.edu)
-- Xiaojia Shelly Zhang (zhangxs@illinois.edu)
-
-Reference:
-- Jia, Y., Wang, C. & Zhang, X.S. FEniTop: a simple FEniCSx implementation
-  for 2D and 3D topology optimization supporting parallel computing.
-  Struct Multidisc Optim 67, 140 (2024).
-  https://doi.org/10.1007/s00158-024-03818-7
-
-Major modifications:
-- Ian Galloway (ian.galloway@mines.sdsmt.edu)
-- Prashant K. Jha (pjha.sci@gmail.com)
-
-Major additions to sensitivity.py:
-- Material-model-independent adjoint sensitivities
-- Generic active design-variable handling
-- Generic design-only constraint handling
+Objective and constraint sensitivities with respect to the physical
+design fields: the UFL forms are differentiated with respect to each
+field, and the state-dependent part comes from one adjoint solve per
+evaluation.
 """
 
 import ufl

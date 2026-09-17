@@ -1,19 +1,6 @@
+# Copyright (c) 2025-2026 Ian Galloway, Prashant K. Jha
+# SPDX-License-Identifier: GPL-3.0-or-later
 """
-Original FEniTop authors:
-- Yingqi Jia (yingqij2@illinois.edu)
-- Chao Wang (chaow4@illinois.edu)
-- Xiaojia Shelly Zhang (zhangxs@illinois.edu)
-
-Reference:
-- Jia, Y., Wang, C. & Zhang, X.S. FEniTop: a simple FEniCSx implementation
-  for 2D and 3D topology optimization supporting parallel computing.
-  Struct Multidisc Optim 67, 140 (2024).
-  https://doi.org/10.1007/s00158-024-03818-7
-
-Major modifications:
-- Ian Galloway (ian.galloway@mines.sdsmt.edu)
-- Prashant K. Jha (pjha.sci@gmail.com)
-
 The nonlinear state problem: displacement space, boundary conditions,
 load constants, the free-energy density supplied by the material file,
 the residual built from it, and the load-stepped Newton solve. No

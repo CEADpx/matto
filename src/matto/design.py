@@ -1,19 +1,11 @@
+# Copyright (c) 2025-2026 Ian Galloway, Prashant K. Jha
+# Copyright (c) 2024 Yingqi Jia, Chao Wang, Xiaojia Shelly Zhang (FEniTop)
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# The Helmholtz filter assembly in HelmholtzKernel and the projection
+# formula in HeavisideProjection are FEniTop's DensityFilter and
+# Heaviside. See NOTICE.
 """
-Original FEniTop authors:
-- Yingqi Jia (yingqij2@illinois.edu)
-- Chao Wang (chaow4@illinois.edu)
-- Xiaojia Shelly Zhang (zhangxs@illinois.edu)
-
-Reference:
-- Jia, Y., Wang, C. & Zhang, X.S. FEniTop: a simple FEniCSx implementation
-  for 2D and 3D topology optimization supporting parallel computing.
-  Struct Multidisc Optim 67, 140 (2024).
-  https://doi.org/10.1007/s00158-024-03818-7
-
-Major modifications:
-- Ian Galloway (ian.galloway@mines.sdsmt.edu)
-- Prashant K. Jha (pjha.sci@gmail.com)
-
 Design-variable parameterization as a chain of operators.
 
 Every design variable is stored twice: a raw field that the optimizer
