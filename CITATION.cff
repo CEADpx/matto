@@ -19,7 +19,7 @@ date-released: "2026-09-14"
 doi: 10.5281/zenodo.22761145
 url: https://doi.org/10.5281/zenodo.22761145
 repository-code: https://github.com/CEADpx/matto
-license: CC-BY-4.0
+license: GPL-3.0-or-later
 
 references:
   - type: article
@@ -33,3 +33,17 @@ references:
     year: 2026
     doi: 10.48550/arXiv.2607.14397
     url: https://arxiv.org/abs/2607.14397
+  - type: article
+    title: "FEniTop: a simple FEniCSx implementation for 2D and 3D topology optimization supporting parallel computing"
+    authors:
+      - given-names: Yingqi
+        family-names: Jia
+      - given-names: Chao
+        family-names: Wang
+      - given-names: Xiaojia Shelly
+        family-names: Zhang
+    journal: Structural and Multidisciplinary Optimization
+    volume: 67
+    issue: 140
+    year: 2024
+    doi: 10.1007/s00158-024-03818-7

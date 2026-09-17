@@ -7,7 +7,7 @@ name = "matto"
 version = "0.2.0"
 description = "Material and topology optimization of stimulus-responsive soft materials"
 readme = "README.md"
-license = { file = "LICENSE" }
+license = { file = "LICENSE.txt" }
 requires-python = ">=3.10"
 authors = [
     { name = "Ian Galloway" },
