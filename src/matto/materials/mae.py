@@ -18,7 +18,7 @@ class MagnetoActiveElastomer(Material):
     fraction phi.
 
     Fields: rho (density), phi (MAE fraction). Stimulus: h, the applied
-    flux density mu0 |H| as a scalar.
+    flux density mu0 times the field magnitude, as a scalar.
     """
 
     fields = ("rho", "phi")

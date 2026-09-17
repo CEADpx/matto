@@ -611,12 +611,11 @@ class Sensitivity:
         """
         Evaluate the current objective, constraints, and sensitivities.
 
-        Returns
-        -------
-        function_values:
-            {
-                "objective": objective_value,
+        Returns two dictionaries, the function values and the
+        gradients with respect to the physical fields::
 
+            function_values = {
+                "objective": objective_value,
                 "constraints": {
                     "constraint_name": {
                         "value": normalized physical value,
@@ -625,16 +624,10 @@ class Sensitivity:
                 },
             }
 
-        gradients:
-            {
-                "objective": {
-                    "variable_name": dJ/d(variable.phys),
-                },
-
+            gradients = {
+                "objective": {"variable_name": dJ/d(variable.phys)},
                 "constraints": {
-                    "constraint_name": {
-                        "variable_name": dg/d(variable.phys),
-                    },
+                    "constraint_name": {"variable_name": dg/d(variable.phys)},
                 },
             }
         """

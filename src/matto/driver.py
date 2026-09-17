@@ -177,7 +177,7 @@ class OptimizationDriver:
 
     Construction reads and checks the problem and builds the design
     variables, the state problem and the sensitivity object. After
-    that the object can be used three ways:
+    that the object can be used three ways::
 
         driver.run()               optimize, save and report
         driver.evaluate()          solve every load case for the current
@@ -548,7 +548,7 @@ class OptimizationDriver:
     # ============================================================
 
     def solve_load_case(self, load_case):
-        """Solve one load case; returns its name and the max |u|."""
+        """Solve one load case; returns its name and the max abs u."""
 
         load_case_name = load_case.get("name", "unnamed")
         max_displacement = self.state.solve(load_case, self.load_steps)
@@ -684,12 +684,13 @@ class OptimizationDriver:
         load-independent, so their values and gradients are taken from
         the first load case only.
 
-        Returns a dictionary:
+        Returns a dictionary::
+
             objective             weighted sum over load cases
             objective_gradients   {variable: owned raw-space array}
             constraints           {name: {"value", "residual"}}
             constraint_gradients  {name: {variable: owned array}}
-            max_displacements     {load case: max |u| over all ranks}
+            max_displacements     {load case: max abs u over all ranks}
         """
 
         active = self.active_design_variables

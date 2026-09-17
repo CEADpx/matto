@@ -10,6 +10,9 @@ build/
 # VS Code
 .vscode/
 
+# Sphinx build
+docs/_build/
+
 # Generated optimization output
 results/
 results_*/

@@ -5,7 +5,7 @@ Consistency checks any material should pass, for use in its tests.
 
 check_material() puts the model on a small mesh with an affine
 displacement, so the deformation gradient is exactly what was asked
-for, and checks three things at zero stimulus and at the given one:
+for, and checks three things at zero stimulus and at the given one.
 
   1. The reference configuration is stress-free: with u = 0 and no
      stimulus the internal-force vector vanishes.
@@ -54,12 +54,14 @@ def check_material(material, field_values=None, stimulus_values=None,
     """
     Raise AssertionError with a message naming the failed check.
 
-    field_values: name -> constant value for each field the material
-        reads; defaults cover rho, phi, theta.
-    stimulus_values: name -> value; defaults to zero for every stimulus.
-    dim: 2 or 3, the dimension the material is meant for.
-    frame_indifference: skip check 2 for a small-strain model that is
-        not objective by construction.
+    Args:
+        field_values: name -> constant value for each field the material
+            reads; defaults cover rho, phi, theta.
+        stimulus_values: name -> value; defaults to zero for every
+            stimulus.
+        dim: 2 or 3, the dimension the material is meant for.
+        frame_indifference: skip check 2 for a small-strain model that
+            is not objective by construction.
     """
 
     if dim == 2:

@@ -14,11 +14,20 @@ authors = [
     { name = "Prashant K. Jha" },
 ]
 
+# FEniCSx (dolfinx, basix, ufl, petsc4py, mpi4py) is not listed: it is an
+# MPI-linked conda dependency, installed from environment.yml.
+dependencies = ["numpy", "scipy"]
+
+[project.urls]
+Homepage = "https://github.com/CEADpx/matto"
+Documentation = "https://ceadpx.github.io/matto"
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [project.optional-dependencies]
 test = ["pytest"]
+docs = ["sphinx", "pydata-sphinx-theme"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
