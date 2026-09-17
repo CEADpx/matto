@@ -262,6 +262,20 @@ def build_mae_beam_problem(comm, nx, ny, load_steps, max_iter=1):
     return problem
 
 
+def use_direct_filter_solve(problem):
+    """
+    Solve the filter with LU instead of CG/GAMG.
+
+    A finite-difference check needs the filter converged well below the
+    difference step; CG/GAMG at PETSc's default tolerance is not, and
+    the noise depends on the mesh partition.
+    """
+    problem["fem_options"]["solver_options"]["filter"]["petsc_options"] = {
+        "ksp_type": "preonly", "pc_type": "lu",
+    }
+    return problem
+
+
 def build_hmsm_beam_3d_problem(comm, nx, ny, nz, load_steps, max_iter=1):
     """
     The hMSM beam extruded in z.
@@ -284,13 +298,7 @@ def build_hmsm_beam_3d_problem(comm, nx, ny, nz, load_steps, max_iter=1):
     )
     problem["mesh_serial"] = None
 
-    # The finite-difference check passes only with the filter solved
-    # directly: with CG/GAMG at the default tolerance the rho gradient is
-    # 8 percent off the finite difference, and tightening the Newton
-    # tolerance does not change it.
-    problem["fem_options"]["solver_options"]["filter"]["petsc_options"] = {
-        "ksp_type": "preonly", "pc_type": "lu",
-    }
+    use_direct_filter_solve(problem)
 
     parameters = dict(problem["material_parameters"], dim=3)
     problem["material_parameters"] = parameters

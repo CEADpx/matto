@@ -13,6 +13,7 @@ from tests.support import (
     build_beam_problem,
     build_hmsm_beam_3d_problem,
     build_mae_beam_problem,
+    use_direct_filter_solve,
 )
 
 COMM = MPI.COMM_WORLD
@@ -46,12 +47,12 @@ def _build_3d(comm, nx, ny, load_steps):
     ids=["hmsm_three_fields", "mae_one_field", "hmsm_three_fields_3d"],
 )
 def test_coarse_beam_adjoint_matches_finite_difference(build, active_fields):
-    problem = build(
+    problem = use_direct_filter_solve(build(
         COMM,
         nx=12,
         ny=3,
         load_steps=5,
-    )
+    ))
     session = BeamSession(problem)
     objective, gradients = session.evaluate()
     assert np.isfinite(objective)

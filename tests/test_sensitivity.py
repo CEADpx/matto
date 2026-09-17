@@ -13,7 +13,11 @@ import numpy as np
 import pytest
 from mpi4py import MPI
 
-from tests.support import BeamSession, build_beam_problem
+from tests.support import (
+    BeamSession,
+    build_beam_problem,
+    use_direct_filter_solve,
+)
 
 COMM = MPI.COMM_WORLD
 STEP = 1.0e-5
@@ -22,11 +26,14 @@ REL_TOL = 5.0e-2
 
 def _session():
     problem = build_beam_problem(COMM, nx=12, ny=3, load_steps=5)
-    return BeamSession(problem)
+    return BeamSession(use_direct_filter_solve(problem))
 
 
 def _all_close(a, b):
-    local = bool(np.allclose(a, b, rtol=0.0, atol=1.0e-12))
+    # Relative: at four ranks the parallel factorization gives
+    # differences near 1e-10 on gradients of order 10. The stale-ghost
+    # error this test exists for is of order 1.
+    local = bool(np.allclose(a, b, rtol=1.0e-9, atol=1.0e-12))
     return COMM.allreduce(local, op=MPI.LAND)
 
 
