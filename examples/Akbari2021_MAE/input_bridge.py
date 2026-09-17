@@ -347,6 +347,7 @@ fem_options = {
             "petsc_options": {
                 "ksp_type": "cg",
                 "pc_type": "gamg",
+                "ksp_rtol": 1.0e-10,
             },
         },
     },

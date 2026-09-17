@@ -18,7 +18,7 @@ BEAM_LENGTH = 100.0
 BEAM_HEIGHT = 20.0
 
 # First printed objective of the committed 150 x 30 beam, load_steps=50.
-FULL_BEAM_FIRST_OBJECTIVE = 7.151568e02
+FULL_BEAM_FIRST_OBJECTIVE = 7.151557e02
 
 
 def _design_variable_specs():
@@ -191,6 +191,7 @@ def build_beam_problem(
                     "petsc_options": {
                         "ksp_type": "cg",
                         "pc_type": "gamg",
+                        "ksp_rtol": 1.0e-10,
                     },
                 },
             },

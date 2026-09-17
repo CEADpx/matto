@@ -209,7 +209,7 @@ fem_options = {
             "petsc_options": {"ksp_type": "preonly", "pc_type": "lu"},
         },
         "filter": {
-            "petsc_options": {"ksp_type": "cg", "pc_type": "gamg"},
+            "petsc_options": {"ksp_type": "cg", "pc_type": "gamg", "ksp_rtol": 1.0e-10},
         },
     },
 }
