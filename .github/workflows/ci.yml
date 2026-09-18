@@ -28,7 +28,8 @@ jobs:
       OMPI_ALLOW_RUN_AS_ROOT_CONFIRM: "1"
     steps:
       - uses: actions/checkout@v4
-      - run: python3 -m pip install ".[test]"
+      # plot: matplotlib, for the SnapshotPlotter tests and input_morphing_dome_3d.py
+      - run: python3 -m pip install ".[test,plot]"
       - name: Serial suite
         run: python3 -m pytest
       - name: Two ranks

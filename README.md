@@ -77,6 +77,10 @@ The hMSM inputs combine a particle-reinforced hyperelastic energy with magnetic 
 
 ![Restorative beam optimized design](docs/assets/beam_opt.png)
 
+#### Load-bearing morphing surface in 3D
+
+[`input_morphing_dome_3d.py`](examples/hMSM/input_morphing_dome_3d.py) jointly optimizes `rho`, `phi`, and `theta` below a fixed solid skin of a clamped slab. Under a field along the thickness the skin is to take the shape of a dome and to hold it under two levels of downward traction; the objective is the skin's shape error summed over the two load cases. The remanent magnetization is kept cell-wise and unfiltered, since filtering an angle field that turns once around the centre leaves a line where the magnetization points the wrong way. The input follows the run with `HistoryWriter` and a subclass of `SnapshotPlotter` from `matto.postprocess`.
+
 ### Anisotropic magnetorheological elastomer
 
 The Akbari–Khajehsaeid model describes a soft-magnetic, particle-chain-reinforced elastomer whose stiffness depends on magnetic-field magnitude and chain-to-field alignment. The implementation interpolates between silicone and a 20% anisotropic MRE and uses `theta` to represent the local particle-chain direction.
