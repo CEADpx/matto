@@ -16,9 +16,11 @@ import basix
 import dolfinx.io
 import numpy as np
 from dolfinx import fem
+from mpi4py import MPI
 
 from .design import DesignVariable
 from .mma import DEFAULT_MOVE, mma_optimizer
+from .postprocess import PostProcessor
 from .sensitivity import Sensitivity
 from .state import StateProblem
 from .utility import Communicator, resolve_solver_options
@@ -224,6 +226,14 @@ class OptimizationDriver:
             "requested_output_fields",
             [],
         )
+        self.postprocessors = list(problem.get("postprocessors", []))
+
+        for postprocessor in self.postprocessors:
+            if not isinstance(postprocessor, PostProcessor):
+                raise TypeError(
+                    "problem['postprocessors'] must hold matto.postprocess."
+                    f"PostProcessor objects, got {type(postprocessor).__name__}."
+                )
 
         if not isinstance(self.design_settings, dict):
             raise TypeError(
@@ -602,29 +612,67 @@ class OptimizationDriver:
         self._open_output()
 
         try:
-            while (
-                self.optimization_iteration < self.maximum_iterations
-                and (
-                    self.change > self.optimization_tolerance
-                    or not self.continuation_complete()
-                )
-            ):
-                self._iterate()
+            self._notify("on_start")
+
+            try:
+                while (
+                    self.optimization_iteration < self.maximum_iterations
+                    and (
+                        self.change > self.optimization_tolerance
+                        or not self.continuation_complete()
+                    )
+                ):
+                    self._iterate()
+
+            except RuntimeError as error:
+                # A failed state solve raises on every rank.
+                self._notify("on_failure", self.optimization_iteration, error)
+                raise
 
             self._solve_final_design()
             self._save_final_arrays()
             self._write_final_report()
 
+            result = {
+                "objective": self.final_objective_value,
+                "constraints": self.final_constraint_values,
+                "max_displacements": self.final_max_displacements,
+                "iterations": self.optimization_iteration,
+                "output_dir": self.output_dir,
+            }
+            self._notify("on_finish", result)
+
         finally:
             self._close()
 
-        return {
-            "objective": self.final_objective_value,
-            "constraints": self.final_constraint_values,
-            "max_displacements": self.final_max_displacements,
-            "iterations": self.optimization_iteration,
-            "output_dir": self.output_dir,
-        }
+        return result
+
+    def _notify(self, hook, *arguments):
+        """
+        Call one hook of every postprocessor.
+
+        A postprocessor that raises on any rank is reported and dropped
+        on all ranks, so the ranks keep making the same collective calls.
+        """
+
+        for postprocessor in list(self.postprocessors):
+            message = None
+
+            try:
+                getattr(postprocessor, hook)(self, *arguments)
+            except Exception as error:
+                message = f"{type(error).__name__}: {error}"
+
+            failed = self.comm.allreduce(int(message is not None), op=MPI.MAX)
+
+            if failed:
+                self.postprocessors.remove(postprocessor)
+                print(
+                    f"[matto] rank {self.comm.rank}: postprocessor "
+                    f"{type(postprocessor).__name__} dropped after {hook}"
+                    + (f": {message}" if message else " failed on another rank"),
+                    flush=True,
+                )
 
     def _iterate(self):
         iteration_start = time.perf_counter()
@@ -674,6 +722,18 @@ class OptimizationDriver:
         self.last_objective_value = objective_value
         self.last_constraint_values = constraint_values
         self.last_max_displacements = max_displacements
+
+        self._notify(
+            "on_iteration",
+            iteration,
+            {
+                "objective": objective_value,
+                "constraints": constraint_values,
+                "max_displacements": max_displacements,
+                "change": self.change,
+                "time": iteration_time,
+            },
+        )
 
     def evaluate(self, write_output=False, report=False):
         """

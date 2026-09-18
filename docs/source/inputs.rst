@@ -109,6 +109,44 @@ What the dictionary holds
 ``output_options``
     ``output_dir`` and ``sim_output_interval``.
 
+``postprocessors`` (optional)
+    A list of :class:`matto.postprocess.PostProcessor` objects that the
+    driver calls while it runs. Without the entry the driver behaves as
+    before.
+
+Following a run
+---------------
+
+Three postprocessors come with the package:
+
+.. code-block:: python
+
+   from matto import DesignSnapshots, HistoryWriter, SnapshotPlotter
+
+   problem["postprocessors"] = [
+       HistoryWriter(),                       # history.csv, one row per iteration
+       SnapshotPlotter(every=10,              # arrays and a picture every 10 iterations
+                       direction="theta", weight="phi"),
+   ]
+
+:class:`~matto.postprocess.DesignSnapshots` saves the raw and physical
+design fields and the displacement as ``snapshots/iter_NNNN.npz``, and
+the design at a failed state solve as ``failure_iter_NNNN.npz``.
+:class:`~matto.postprocess.SnapshotPlotter` adds a picture drawn with
+matplotlib: one panel per field in 2D; in 3D the cells above a density
+threshold as a body, one panel per camera view. Views are given as
+``views=[{"elev": 25, "azim": -60}, ...]``; without them the body is
+seen from above, and a plate-like body also from below. A parallel run
+needs ``mesh_serial`` for both, as the final arrays do.
+
+To draw something else, subclass ``SnapshotPlotter`` and override
+``draw(figure, data)``; to do something other than saving and drawing,
+subclass :class:`~matto.postprocess.PostProcessor` and override the
+hooks ``on_start``, ``on_iteration``, ``on_failure`` and ``on_finish``.
+A postprocessor that raises is reported and dropped, and the
+optimization continues. One that gathers fields must do its gathers
+before any work done on rank 0 only.
+
 Using the driver without optimizing
 -----------------------------------
 

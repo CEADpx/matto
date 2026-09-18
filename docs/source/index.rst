@@ -56,6 +56,7 @@ load case for ParaView, the final design fields as ``.npy`` arrays, and
    api/state
    api/design
    api/sensitivity
+   api/postprocess
    api/materials
    api/mma
    api/utility

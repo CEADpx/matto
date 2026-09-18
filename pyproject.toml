@@ -27,6 +27,7 @@ where = ["src"]
 
 [project.optional-dependencies]
 test = ["pytest"]
+plot = ["matplotlib"]
 docs = ["sphinx", "pydata-sphinx-theme"]
 
 [tool.ruff.lint]

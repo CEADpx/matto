@@ -3,5 +3,17 @@
 """MatTO: material and topology optimization of stimulus-responsive soft materials."""
 
 from .driver import OptimizationDriver
+from .postprocess import (
+    DesignSnapshots,
+    HistoryWriter,
+    PostProcessor,
+    SnapshotPlotter,
+)
 
-__all__ = ["OptimizationDriver"]
+__all__ = [
+    "OptimizationDriver",
+    "PostProcessor",
+    "HistoryWriter",
+    "DesignSnapshots",
+    "SnapshotPlotter",
+]
