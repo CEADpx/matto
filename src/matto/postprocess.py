@@ -260,18 +260,24 @@ class SnapshotPlotter(DesignSnapshots):
     the ``threshold`` field exceeds its level, drawn as a body coloured
     by ``color``, one panel per camera view.
 
-    fields      names of the design variables to draw; default all
-    direction   name of an angle field; in 2D its direction (cos, sin) is
-                drawn as arrows where ``weight`` exceeds ``arrow_cutoff``
-                times its maximum. Arrows inside a 3D body would not be
-                visible and are not drawn.
-    weight      name of the field that scales the arrows' presence
-    threshold   (field name, level) selecting the 3D body; default
-                ("rho", 0.5) when the problem has a field rho
-    color       field that colours the 3D body; default ``weight``, else
-                the threshold field
-    views       list of {"elev": degrees, "azim": degrees}; default from
-                default_views()
+    fields
+        Names of the design variables to draw; default all.
+    direction
+        Name of an angle field. In 2D its direction (cos, sin) is drawn
+        as arrows where ``weight`` exceeds ``arrow_cutoff`` times its
+        maximum. Arrows inside a 3D body would not be visible and are
+        not drawn.
+    weight
+        Name of the field that decides where arrows are drawn.
+    threshold
+        (field name, level) selecting the 3D body; default
+        ("rho", 0.5) when the problem has a field rho.
+    color
+        Field that colours the 3D body; default ``weight``, else the
+        threshold field.
+    views
+        List of {"elev": degrees, "azim": degrees}; default from
+        default_views().
 
     Needs matplotlib, imported here and not by the package. Pictures
     are for following a run: matplotlib sorts 3D faces by depth only
