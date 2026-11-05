@@ -22,19 +22,18 @@ tested versions.
 .. code-block:: bash
 
    conda env create -f environment.yml
-   conda activate confenx
-   python -m pip install -e .
+   conda activate matto
 
 Running an example
 ------------------
 
 Each example is one input script that builds a ``problem`` dictionary
-and runs it:
+and runs it, from the repository root with the sources on the path:
 
 .. code-block:: bash
 
-   python examples/hMSM/input_beam.py
-   mpirun -n 4 python examples/hMSM/input_beam.py
+   PYTHONPATH=src python examples/hMSM/input_beam.py
+   PYTHONPATH=src mpirun -n 4 python examples/hMSM/input_beam.py
 
 Results go to the ``output_dir`` named in the script: a ``.bp`` file per
 load case for ParaView, the final design fields as ``.npy`` arrays, and

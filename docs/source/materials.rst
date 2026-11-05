@@ -58,6 +58,8 @@ Shipped models
      - rho
      - none
 
-The hard-magnetic model takes ``dim=3`` for a 3D problem. The linear
+The hard-magnetic model takes ``dim=3`` for a 3D problem, and
+``magnetization_map="R"`` to map the remanent flux density by the
+rotation of the polar decomposition of ``F`` instead of by ``F``. The linear
 elastic model is small-strain and exists so a compliance problem can be
 run with the settings of a linear-elastic code and compared.
