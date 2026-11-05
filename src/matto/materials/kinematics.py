@@ -47,7 +47,8 @@ def polar_rotation(F, eps=1.0e-14):
     largest principal stretch. That form divides by terms that vanish when
     C has repeated eigenvalues, including F = I. Each square root is
     therefore taken of its argument plus eps, and the cosine argument is
-    clamped just inside [-1, 1].
+    clamped just inside [-1, 1]. eps is absolute: F is taken to be of
+    order one, as a deformation gradient is.
     """
     dim = F.ufl_shape[0]
 

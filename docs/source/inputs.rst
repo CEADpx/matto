@@ -116,8 +116,7 @@ What the dictionary holds
 
 ``postprocessors`` (optional)
     A list of :class:`matto.postprocess.PostProcessor` objects that the
-    driver calls while it runs. Without the entry the driver behaves as
-    before.
+    driver calls while it runs.
 
 Following a run
 ---------------

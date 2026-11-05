@@ -1,6 +1,5 @@
 # Restorative beam optimization
-# rho,  phi, and theta 
-import os
+# rho,  phi, and theta
 from pathlib import Path
 
 import numpy as np
@@ -39,6 +38,10 @@ else:
 #  MATERIAL AND INTERPOLATION PARAMETERS
 # ============================================================
 
+# Map of the remanent magnetization: "F", the deformation gradient, or
+# "R", the rotation of its polar decomposition.
+MAGNETIZATION_MAP = "F"
+
 material_parameters = {     # Fixed parameters used to construct W
     # Matrix material
     "G0": 100.0,             # Base shear modulus [kPa]
@@ -50,11 +53,7 @@ material_parameters = {     # Fixed parameters used to construct W
     # hMSM magnetic parameters
     "mu0": 1.256e3,          # Vacuum permeability [mT^2/kPa]
     "B_rem_mag": 200.0,      # Remanent magnetic flux density [mT]
-
-    # Map of the remanent magnetization: "F" (deformation gradient, the
-    # default) or "R" (rotation of the polar decomposition). Set the
-    # environment variable BEAM_MAGNETIZATION_MAP=R to run the "R" case.
-    "magnetization_map": os.environ.get("BEAM_MAGNETIZATION_MAP", "F"),
+    "magnetization_map": MAGNETIZATION_MAP,
 }
 
 # ============================================================

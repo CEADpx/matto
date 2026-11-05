@@ -254,7 +254,9 @@ def test_fixed_region_holds_physical_field():
     ones.set(1.0)
     masked = ones.copy()
     masked.array[held] = 0.0
-    assert np.allclose(variable.backward([ones])[0], variable.backward([masked])[0])
+    gradient = variable.backward([ones])[0]
+    assert np.any(gradient != 0.0)
+    assert np.allclose(gradient, variable.backward([masked])[0])
 
 
 def test_fixed_region_value_can_depend_on_position():
@@ -270,11 +272,7 @@ def test_fixed_region_value_can_depend_on_position():
 
 
 def test_mma_vector_holds_only_free_dofs():
-    """
-    Fixed dofs are outside the MMA vector: they keep their values and
-    the reported change is that of the free dofs. Values at the bounds,
-    as for a solid, particle-free skin.
-    """
+    """Fixed dofs keep their values; the reported change is that of the free dofs."""
     from tests.support import build_beam_problem, use_direct_filter_solve
     from matto.driver import OptimizationDriver
 

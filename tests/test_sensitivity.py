@@ -63,7 +63,10 @@ def test_dirichlet_condition_can_leave_a_component_free():
     left = np.isclose(x[:, 0], 0.0)
     assert np.allclose(u[left, 0], 0.0, atol=1e-14)
 
-    above_corner = left & ~np.isclose(x[:, 1], 0.0)
+    corner = left & np.isclose(x[:, 1], 0.0)
+    assert np.allclose(u[corner, 1], 0.0, atol=1e-14)
+
+    above_corner = left & ~corner
     slid = bool(np.any(np.abs(u[above_corner, 1]) > 1e-8))
     assert COMM.allreduce(slid, op=MPI.LOR)
 

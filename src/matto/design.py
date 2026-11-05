@@ -552,13 +552,10 @@ class DesignVariable:
         # Fixed regions
         # ----------------------------------------------------
 
-        # A fixed region holds the raw field at a value and, once the
-        # operators have run, the physical field of the region's cells
-        # at the same value, so that a filter cannot smear the design
-        # region into it. The raw dofs are not optimization variables:
-        # they are set once below and left out of the values, bounds
-        # and gradients that MMA sees; the physical dofs carry no
-        # sensitivity.
+        # A fixed region holds the raw field, and after the operators the
+        # physical field of its cells, at a value. Its raw dofs are set
+        # once and left out of the MMA vector; its physical dofs carry
+        # no sensitivity.
         self.held_raw = []
         self.held_phys = []
 

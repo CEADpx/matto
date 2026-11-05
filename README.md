@@ -7,12 +7,12 @@
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22761145.svg)](https://doi.org/10.5281/zenodo.22761145)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE.txt)
 
-MatTO designs structures and materials simultaneously made of soft materials that deform or stiffen when a stimulus is applied: a magnetic field, heat, or light. Given a domain, loads, a stimulus and a goal, it finds **where material should be** (`rho`), **where the active material should go** (`phi`), and **how that material should be oriented** (`theta`), by nonlinear finite-element analysis, adjoint sensitivities and the optimization solvers.
+MatTO optimizes the structure and the material of soft bodies that deform or stiffen under a stimulus: a magnetic field, heat or light. Given a domain, loads, a stimulus and a goal, it finds the structural density `rho`, the distribution `phi` of the active material and its orientation `theta`, by nonlinear finite-element analysis, adjoint sensitivities and MMA updates.
 
-The optimization is written once and knows nothing about the material. A material is a short class that declares its design fields and stimuli and returns a free-energy density; the package differentiates it for the stress and the sensitivities. Four material families and eleven worked problems, in 2D and 3D, serial and MPI-parallel, are included in the repository. It is built on [FEniCSx](https://fenicsproject.org/) and extended from [FEniTop](https://github.com/missionlab/fenitop). Documentation: [ceadpx.github.io/matto](https://ceadpx.github.io/matto).
+A material is a class that declares its design fields and stimuli and returns a free-energy density; the package differentiates it for the stress and the sensitivities, and the optimization code is the same for every material. Four material families and eleven worked problems, in 2D and 3D, serial and MPI-parallel, are included in the repository. It is built on [FEniCSx](https://fenicsproject.org/) and extended from [FEniTop](https://github.com/missionlab/fenitop). Documentation: [ceadpx.github.io/matto](https://ceadpx.github.io/matto).
 
 <picture><source media="(prefers-color-scheme: dark)" srcset="docs/assets/demo/hMSM_morphing_dome_3d_dark.gif"><img src="docs/assets/demo/hMSM_morphing_dome_3d_light.gif" width="100%" alt="Optimization of a magnetically actuated morphing surface in 3D"></picture>
-*A slab with a solid skin, clamped on its sides, designed so that a magnetic field along its thickness raises the skin into a dome and holds that shape under load. MatTO designs the structure below the skin, where the magnetic particles go, and the direction of their magnetization, all at once. Left and centre: the material that remains, coloured by magnetic content. Right: the skin's rise against the target's contour lines.*
+*A slab with a solid skin, clamped on its sides, designed so that a magnetic field along its thickness raises the skin into a dome and holds that shape under load. Left and centre: the material that remains, coloured by magnetic content. Right: the skin's rise against the target's contour lines.*
 
 ## Examples
 
@@ -116,7 +116,7 @@ Two models that stiffen under a magnetic field of magnitude `h`: the anisotropic
 </tr>
 </table>
 
-[`examples/linear_elastic/`](examples/linear_elastic/) holds 2D and 3D compliance-minimization cantilevers set up like FEniTop's, so the two codes can be compared.
+[`examples/linear_elastic/`](examples/linear_elastic/) holds 2D and 3D compliance-minimization cantilevers set up like FEniTop's.
 
 ## What the package provides
 
@@ -124,7 +124,7 @@ Two models that stiffen under a magnetic field of magnitude `h`: the anisotropic
 - An optimization workflow that is independent of the material model
 - Any combination of structural density, material distribution and local orientation as design fields, each optimized or prescribed
 - Several load cases, each with its own loads and stimuli, under one objective
-- Helmholtz filtering, Heaviside projection with continuation, and fixed design regions, composed as a chain of operators per field
+- Helmholtz filtering and Heaviside projection with continuation, chained per field; fixed design regions held in the raw and the physical field
 - Adjoint sensitivities for objectives and constraints, checked against finite differences in the tests
 - Method of Moving Asymptotes (MMA) design updates
 - Compliance, displacement, displacement-tracking, shape-tracking and rotation objectives in the examples
@@ -187,7 +187,7 @@ from matto import OptimizationDriver
 OptimizationDriver(problem).run()
 ```
 
-The closest existing example is the right starting point; [Writing an input file](https://ceadpx.github.io/matto/inputs.html) describes every entry.
+[Writing an input file](https://ceadpx.github.io/matto/inputs.html) describes every entry.
 
 ### Adding a material
 
@@ -246,8 +246,7 @@ The suite checks the adjoint sensitivities against finite differences in 2D and 
 
 ## Scope
 
-The analysis is nonlinear and quasi-static. Applied magnetic fields and LCE activation are prescribed inputs; the repository does not solve separate electromagnetic, thermal or optical field equations. Of the material models, the hard-magnetic soft material runs in 2D and 3D; the LCE and MAE models are plane strain. In 3D the remanent magnetization lies in the x-y plane, set by one angle, and the applied field may point anywhere. The implementations are intended for research and should be checked for the units, dimensional assumptions and parameter ranges of a new application.
-
+The analysis is nonlinear and quasi-static. Applied magnetic fields and LCE activation are prescribed inputs; the repository does not solve separate electromagnetic, thermal or optical field equations. Of the material models, the hard-magnetic soft material runs in 2D and 3D; the LCE and MAE models are plane strain. In 3D the remanent magnetization lies in the x-y plane, set by one angle, and the applied field may point anywhere.
 ## References
 
 1. Y. Jia, C. Wang, and X. S. Zhang, “FEniTop: a simple FEniCSx implementation for 2D and 3D topology optimization supporting parallel computing,” *Structural and Multidisciplinary Optimization*, 67, 140 (2024). [https://doi.org/10.1007/s00158-024-03818-7](https://doi.org/10.1007/s00158-024-03818-7)
