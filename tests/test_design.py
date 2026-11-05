@@ -132,7 +132,7 @@ def test_heaviside_projection_adjoint():
     _check_operator(operator, rng)
 
 
-def _variable(mesh, operators):
+def _variable(mesh, operators, fixed_regions=()):
     return DesignVariable(
         name="rho",
         mesh=mesh,
@@ -144,14 +144,14 @@ def _variable(mesh, operators):
             "raw_space": ("DG", 0),
             "physical_space": ("CG", 1),
             "operators": operators,
-            "fixed_regions": [],
+            "fixed_regions": list(fixed_regions),
         },
         petsc_options=LU,
     )
 
 
 def _check_variable(variable, rng):
-    variable.set_values(rng.uniform(0.2, 0.8, variable.size))
+    variable.set_values(rng.uniform(0.2, 0.8, variable.free_size))
     variable.forward(0)
 
     _check_adjoint(
@@ -210,3 +210,103 @@ def test_unknown_operator_type_names_the_known_ones():
         build_operator_chain(
             "rho", [{"type": "median"}], raw, phys, COMM, {}
         )
+
+
+# The top row of cells of the 2 x 1 mesh, as a solid skin.
+def _in_top_strip(x):
+    return x[1] > 0.75
+
+
+SKIN = {"where": _in_top_strip, "value": 1.0}
+
+
+def test_fixed_region_dofs_are_not_optimization_variables():
+    variable = _variable(_mesh(), [{"type": "density_filter", "radius": 0.3}], [SKIN])
+    fixed = ~variable.free
+
+    assert fixed.any() and variable.free.any()
+    assert variable.free_size == variable.size - np.count_nonzero(fixed)
+    assert variable.get_values().size == variable.free_size
+    assert variable.get_lower_bounds().size == variable.free_size
+    assert variable.get_upper_bounds().size == variable.free_size
+
+    variable.set_values(np.full(variable.free_size, 0.3))
+    raw = variable.raw.x.petsc_vec.array
+    assert np.all(raw[fixed] == 1.0)
+    assert np.all(raw[variable.free] == 0.3)
+
+
+def test_fixed_region_holds_physical_field():
+    """The physical field of the region's cells is held after the filter,
+    with no sensitivity there."""
+    variable = _variable(_mesh(), [{"type": "density_filter", "radius": 0.3}], [SKIN])
+    phys_size = variable.phys.x.petsc_vec.array.size
+    y = variable.physical_space.tabulate_dof_coordinates()[:phys_size, 1]
+    held = y > 0.75 - 1.0e-9       # the nodes of the top row of cells
+
+    variable.set_values(np.full(variable.free_size, 0.3))
+    variable.forward(0)
+    phys = variable.phys.x.petsc_vec.array
+    assert np.all(phys[held] == 1.0)
+    assert np.all(phys[~held] < 1.0)
+
+    ones = variable.phys.x.petsc_vec.copy()
+    ones.set(1.0)
+    masked = ones.copy()
+    masked.array[held] = 0.0
+    assert np.allclose(variable.backward([ones])[0], variable.backward([masked])[0])
+
+
+def test_fixed_region_value_can_depend_on_position():
+    region = {"where": _in_top_strip, "value": lambda x: 0.5 + 0.2 * x[0]}
+    variable = _variable(_mesh(), [{"type": "density_filter", "radius": 0.3}], [region])
+    fixed = ~variable.free
+    x = variable.raw_space.tabulate_dof_coordinates()[:variable.size, 0]
+
+    variable.set_values(np.full(variable.free_size, 0.3))
+    raw = variable.raw.x.petsc_vec.array
+    assert np.allclose(raw[fixed], 0.5 + 0.2 * x[fixed])
+    assert np.all(raw[variable.free] == 0.3)
+
+
+def test_mma_vector_holds_only_free_dofs():
+    """
+    Fixed dofs are outside the MMA vector: they keep their values and
+    the reported change is that of the free dofs. Values at the bounds,
+    as for a solid, particle-free skin.
+    """
+    from tests.support import build_beam_problem, use_direct_filter_solve
+    from matto.driver import OptimizationDriver
+
+    def in_skin(x):
+        return x[1] > 15.0
+
+    problem = use_direct_filter_solve(
+        build_beam_problem(COMM, nx=12, ny=3, load_steps=2)
+    )
+    problem["design_variables"]["rho"]["fixed_regions"] = [
+        {"where": in_skin, "value": 1.0},
+    ]
+    problem["design_variables"]["phi"]["fixed_regions"] = [
+        {"where": in_skin, "value": 0.0},
+    ]
+    driver = OptimizationDriver(problem)
+    variables = driver.active_design_variables
+
+    assert driver.design_vector_size == sum(v.free_size for v in variables.values())
+    assert variables["rho"].free_size < variables["rho"].size
+
+    driver._reset_mma_history()
+    driver.optimization_iteration = 0
+    for _ in range(3):
+        before = {name: v.raw.x.petsc_vec.array.copy() for name, v in variables.items()}
+        driver._iterate()
+
+        free_change = 0.0
+        for name, variable in variables.items():
+            after = variable.raw.x.petsc_vec.array
+            assert np.array_equal(after[~variable.free], before[name][~variable.free])
+            free_change = max(free_change, float(np.max(np.abs(after - before[name]))))
+        free_change = COMM.allreduce(free_change, op=MPI.MAX)
+
+        assert driver.change == pytest.approx(free_change, rel=1.0e-12)

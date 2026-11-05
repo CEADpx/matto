@@ -54,12 +54,6 @@ def _owned_size(function):
     return index_map.size_local * block_size
 
 
-def _owned_values(function):
-    size = _owned_size(function)
-
-    return function.x.array[:size].copy()
-
-
 def _owned_gradient(values, function):
     if values is None:
         raise ValueError(
@@ -408,8 +402,9 @@ class OptimizationDriver:
     # ============================================================
 
     def _layout_design_vector(self):
-        # Active variables are concatenated, in order, into one local
-        # vector for MMA. Bounds are laid out the same way.
+        # The free raw dofs of the active variables are concatenated, in
+        # order, into one local vector for MMA; fixed-region dofs are not
+        # part of it. Bounds are laid out the same way.
         self.design_slices = {}
         self.design_lower_bounds = {}
         self.design_upper_bounds = {}
@@ -417,7 +412,7 @@ class OptimizationDriver:
         offset = 0
 
         for name, variable in self.active_design_variables.items():
-            local_size = _owned_size(variable.raw)
+            local_size = variable.free_size
 
             self.design_slices[name] = slice(offset, offset + local_size)
             self.design_lower_bounds[name] = variable.get_lower_bounds()
@@ -740,16 +735,17 @@ class OptimizationDriver:
         Solve every load case and accumulate the objective and its gradients.
 
         The objective is the weighted sum over load cases and the
-        gradients are in raw space. Constraints are design-dependent and
+        gradients are with respect to the free raw dofs, laid out as
+        DesignVariable.get_values(). Constraints are design-dependent and
         load-independent, so their values and gradients are taken from
         the first load case only.
 
         Returns a dictionary::
 
             objective             weighted sum over load cases
-            objective_gradients   {variable: owned raw-space array}
+            objective_gradients   {variable: free raw-dof array}
             constraints           {name: {"value", "residual"}}
-            constraint_gradients  {name: {variable: owned array}}
+            constraint_gradients  {name: {variable: free raw-dof array}}
             max_displacements     {load case: max abs u over all ranks}
         """
 
@@ -759,7 +755,7 @@ class OptimizationDriver:
         objective_value_total = 0.0
 
         objective_gradients_total = {
-            name: np.zeros(_owned_size(variable.raw), dtype=float)
+            name: np.zeros(variable.free_size, dtype=float)
             for name, variable in active.items()
         }
 
@@ -819,7 +815,9 @@ class OptimizationDriver:
 
                 objective_gradients_total[variable_name] += (
                     load_case_weight
-                    * _owned_gradient(raw_gradients[0], variable.raw)
+                    * variable.free_part(
+                        _owned_gradient(raw_gradients[0], variable.raw)
+                    )
                 )
 
                 if use_constraints:
@@ -828,9 +826,11 @@ class OptimizationDriver:
                     ):
                         constraint_gradients_raw[constraint_name][
                             variable_name
-                        ] = _owned_gradient(
-                            raw_gradients[constraint_index + 1],
-                            variable.raw,
+                        ] = variable.free_part(
+                            _owned_gradient(
+                                raw_gradients[constraint_index + 1],
+                                variable.raw,
+                            )
                         )
 
             if write_output:
@@ -863,7 +863,7 @@ class OptimizationDriver:
         constraint_names = self.constraint_names
 
         design_vector = np.concatenate([
-            _owned_values(variable.raw)
+            variable.get_values()
             for variable in active.values()
         ])
 

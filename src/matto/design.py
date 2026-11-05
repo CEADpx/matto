@@ -32,6 +32,7 @@ import ufl
 from dolfinx import la
 from dolfinx.fem import Function, form, functionspace
 from dolfinx.fem.petsc import assemble_matrix, create_matrix, create_vector
+from dolfinx.mesh import compute_midpoints
 from petsc4py import PETSc
 
 from .utility import apply_petsc_options
@@ -551,34 +552,35 @@ class DesignVariable:
         # Fixed regions
         # ----------------------------------------------------
 
-        self.fixed_regions = []
-
-        coordinates = (
-            self.raw_space.tabulate_dof_coordinates()[:self.size].T
-        )
+        # A fixed region holds the raw field at a value and, once the
+        # operators have run, the physical field of the region's cells
+        # at the same value, so that a filter cannot smear the design
+        # region into it. The raw dofs are not optimization variables:
+        # they are set once below and left out of the values, bounds
+        # and gradients that MMA sees; the physical dofs carry no
+        # sensitivity.
+        self.held_raw = []
+        self.held_phys = []
 
         for region in settings.get("fixed_regions", []):
-            where = region["where"]
-            value = float(region["value"])
+            where, value = region["where"], region["value"]
 
-            mask = np.asarray(
-                where(coordinates),
-                dtype=bool,
-            )
+            mask, held = self._held_dofs(self.raw_space, self.size, where, value)
 
-            if mask.size != self.size:
+            if np.any(held < self.lower_bound) or np.any(held > self.upper_bound):
                 raise ValueError(
-                    f"Fixed-region mask for design variable '{name}' "
-                    "has the wrong size."
-                )
-
-            if value < self.lower_bound or value > self.upper_bound:
-                raise ValueError(
-                    f"Fixed-region value {value} for design variable "
+                    f"Fixed-region value {held} for design variable "
                     f"'{name}' lies outside its bounds."
                 )
 
-            self.fixed_regions.append((mask, value))
+            self.held_raw.append((mask, held))
+            self.held_phys.append(self._held_physical_dofs(where, value))
+
+        # The raw dofs that MMA controls.
+        self.free = np.ones(self.size, dtype=bool)
+        for mask, _ in self.held_raw:
+            self.free &= ~mask
+        self.free_size = int(np.count_nonzero(self.free))
 
         # ----------------------------------------------------
         # Initialization
@@ -586,7 +588,7 @@ class DesignVariable:
 
         if self.active:
             self._assign(self.raw, self.initial)
-            self.apply_fixed_regions()
+            self._hold(self.raw, self.held_raw)
             self.forward(iteration=0)
         else:
             # For an inactive variable, prescribed_value represents
@@ -610,18 +612,69 @@ class DesignVariable:
             mode=PETSc.ScatterMode.FORWARD,
         )
 
-    def apply_fixed_regions(self):
-        """Reapply prescribed raw values in fixed regions."""
+    def _held_dofs(self, space, size, where, value):
+        """
+        The owned dofs of a space inside a fixed region, as a mask, and
+        the value held there: a number or, like "initial", a function
+        of position.
+        """
 
-        if not self.active:
-            return
+        coordinates = space.tabulate_dof_coordinates()[:size].T
+        mask = np.asarray(where(coordinates), dtype=bool)
 
-        values = self.raw.x.petsc_vec.array
+        if mask.shape != (size,):
+            raise ValueError(
+                f"Fixed-region mask for design variable '{self.name}' "
+                "has the wrong size."
+            )
 
-        for mask, fixed_value in self.fixed_regions:
-            values[mask] = fixed_value
+        if callable(value):
+            value = np.asarray(value(coordinates[:, mask]), dtype=float)
+        else:
+            value = float(value)
 
-        self.raw.x.petsc_vec.ghostUpdate(
+        return mask, value
+
+    def _held_physical_dofs(self, where, value):
+        """
+        The owned physical dofs of the cells inside a fixed region, as a
+        mask, and the value held there. A cell is in the region when
+        its midpoint is, so a node on the region's edge is held on every
+        rank alike; a node held by a cell on one rank is marked on the
+        rank that owns it.
+        """
+
+        tdim = self.mesh.topology.dim
+        cell_map = self.mesh.topology.index_map(tdim)
+        cells = np.arange(cell_map.size_local + cell_map.num_ghosts, dtype=np.int32)
+        midpoints = compute_midpoints(self.mesh, tdim, cells)
+        held_cells = np.flatnonzero(np.asarray(where(midpoints.T), dtype=bool))
+
+        marker = Function(self.physical_space)
+        marker.x.array[self.physical_space.dofmap.list[held_cells].ravel()] = 1.0
+        marker.x.scatter_reverse(la.InsertMode.add)
+        marker.x.scatter_forward()
+
+        size = self.phys.x.petsc_vec.array.size
+        mask = marker.x.array[:size] > 0.0
+
+        if callable(value):
+            coordinates = self.physical_space.tabulate_dof_coordinates()[:size].T
+            value = np.asarray(value(coordinates[:, mask]), dtype=float)
+        else:
+            value = float(value)
+
+        return mask, value
+
+    def _hold(self, field, held):
+        """Write the fixed-region values into a field."""
+
+        values = field.x.petsc_vec.array
+
+        for mask, value in held:
+            values[mask] = value
+
+        field.x.petsc_vec.ghostUpdate(
             addv=PETSc.InsertMode.INSERT,
             mode=PETSc.ScatterMode.FORWARD,
         )
@@ -662,13 +715,13 @@ class DesignVariable:
             self._assign(self.phys, self.prescribed_value)
             return False
 
-        self.apply_fixed_regions()
-
         # raw -> T_1 -> ... -> T_k -> phys
         updated = False
         for operator in self.operators:
             updated = operator.update(iteration) or updated
             operator.forward()
+
+        self._hold(self.phys, self.held_phys)
 
         return updated
 
@@ -707,6 +760,12 @@ class DesignVariable:
             for gradient in physical_gradients
         ]
 
+        # The held physical dofs do not depend on the raw field.
+        for gradient in gradients:
+            if gradient is not None:
+                for mask, _ in self.held_phys:
+                    gradient.array[mask] = 0.0
+
         # phys -> T_k^T -> ... -> T_1^T -> raw
         for operator in reversed(self.operators):
             gradients = operator.backward(gradients)
@@ -720,42 +779,49 @@ class DesignVariable:
             for gradient in gradients
         ]
 
-    def get_values(self):
-        """Return the current raw MMA values."""
+    # The methods below are the optimizer's view of the variable: the
+    # owned raw dofs outside every fixed region, in their local order.
 
-        return self.raw.x.petsc_vec.array.copy()
+    def free_part(self, raw_values):
+        """The free entries of an owned raw-space array, e.g. a gradient."""
+
+        return np.asarray(raw_values)[self.free]
+
+    def get_values(self):
+        """Return the current values of the free raw dofs."""
+
+        return self.free_part(self.raw.x.petsc_vec.array).copy()
 
     def get_lower_bounds(self):
-        """Return the raw lower-bound array."""
+        """Return the lower bounds of the free raw dofs."""
 
         return np.full(
-            self.size,
+            self.free_size,
             self.lower_bound,
             dtype=float,
         )
 
     def get_upper_bounds(self):
-        """Return the raw upper-bound array."""
+        """Return the upper bounds of the free raw dofs."""
 
         return np.full(
-            self.size,
+            self.free_size,
             self.upper_bound,
             dtype=float,
         )
 
     def set_values(self, values):
-        """Assign an updated MMA array to the raw field."""
+        """Assign updated values to the free raw dofs."""
 
         values = np.asarray(values, dtype=float)
 
-        if values.size != self.size:
+        if values.size != self.free_size:
             raise ValueError(
                 f"Updated values for design variable '{self.name}' "
-                f"have size {values.size}; expected {self.size}."
+                f"have size {values.size}; expected {self.free_size}."
             )
 
-        self.raw.x.petsc_vec.array[:] = values
-        self.apply_fixed_regions()
+        self.raw.x.petsc_vec.array[self.free] = values
 
         self.raw.x.petsc_vec.ghostUpdate(
             addv=PETSc.InsertMode.INSERT,

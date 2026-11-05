@@ -63,7 +63,10 @@ What the dictionary holds
     ``("CG", 1)`` unless ``raw_space`` and ``physical_space`` say
     otherwise. An inactive variable takes ``prescribed_value``
     (default: ``initial``) as its physical field. ``fixed_regions``
-    holds regions where the raw field is held at a value.
+    is a list of ``{where, value}`` regions where the raw field and,
+    after the operators, the physical field of the region's cells are
+    held at ``value``, a number or, like ``initial``, a function of
+    position; those raw dofs are not optimization variables.
 
 ``boundary_conditions``, ``traction_boundaries``
     Dirichlet conditions as ``{name, on_boundary, value}`` and named
