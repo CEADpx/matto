@@ -16,7 +16,7 @@ The optimization is written once and knows nothing about the material. A materia
 
 ## Examples
 
-Every example below is an input script in [`examples/`](examples/) that runs as is. Left: the problem. Right: the design over the iterations, the final frame being the optimized design. Colour shows the amount of material, from none (the background) to full; marks on the active-material field show its orientation.
+Every example below is an input script in [`examples/`](examples/). Left: the problem. Right: the design over the iterations, the final frame being the optimized design. Colour shows the amount of material, from none (the background) to full; marks on the active-material field show its orientation.
 
 ### Hard-magnetic soft materials
 
@@ -28,7 +28,7 @@ A particle-reinforced hyperelastic matrix with a magnetic potential energy that 
 <td width="58%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/assets/demo/hMSM_morphing_dome_3d_dark.gif"><img src="docs/assets/demo/hMSM_morphing_dome_3d_light.gif" width="100%" alt="Load-bearing morphing surface, 3D optimization"></picture></td>
 </tr>
 <tr>
-<td colspan="2"><b>Load-bearing morphing surface, 3D</b> · <a href="examples/hMSM/input_morphing_dome_3d.py"><code>input_morphing_dome_3d.py</code></a><br>Designs <code>rho</code>, <code>phi</code> and <code>theta</code> below a solid, non-magnetic skin so that the skin forms a 1 mm dome under a 200 mT field and holds it under 0.5 kPa. One quadrant is modeled, with symmetry conditions on its two inner faces, and the skin is held in all three fields. After 500 iterations the centre of the skin rises 0.986 mm, with a root-mean-square error of 0.005 mm against the target. The magnetization is kept cell-wise and unfiltered, since filtering an angle that turns once around the centre leaves a line where it points the wrong way. The animation is of the earlier full-slab form of this problem (100 mT, two load cases).</td>
+<td colspan="2"><b>Load-bearing morphing surface, 3D</b> · <a href="examples/hMSM/input_morphing_dome_3d.py"><code>input_morphing_dome_3d.py</code></a><br>Designs <code>rho</code>, <code>phi</code> and <code>theta</code> below a solid, non-magnetic skin so that the skin forms a 1 mm dome under a 200 mT field and holds it under 0.5 kPa. One quadrant is modeled, with symmetry conditions on its two inner faces, and the skin is held in all three fields. After 500 iterations the centre of the skin rises 0.986 mm, with a root-mean-square error of 0.005 mm against the target. The magnetization is kept cell-wise and unfiltered, since filtering an angle that turns once around the centre leaves a line where it points the wrong way.</td>
 </tr>
 <tr>
 <td width="42%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/assets/demo/hMSM_restorative_beam_setup_dark.png"><img src="docs/assets/demo/hMSM_restorative_beam_setup_light.png" width="100%" alt="Restorative beam setup"></picture></td>
@@ -152,8 +152,6 @@ PYTHONPATH=src python examples/Barrera2024_LCE/input_morphing_strip.py          
 PYTHONPATH=src mpirun -n 4 python examples/hMSM/input_morphing_dome_3d.py       # parallel
 ```
 
-The package is not installed: `PYTHONPATH=src` puts the sources on the path for the one command, and the tests do the same for themselves, so a clean checkout runs as is and every edit is picked up at once. To use `matto` from another directory, `python -m pip install .`; not `-e`, since an editable install points the environment at this working tree until it is uninstalled.
-
 The output directory is set by `output_options` in each input script. A completed run writes:
 
 - `optimized_design_<load_case>.bp/`: ParaView-readable BP4 results for each load case
@@ -235,9 +233,8 @@ MatTO
 
 ## Testing
 
-`pythonpath = ["src"]` in `pyproject.toml` puts the sources on the path for the test run, so nothing needs to be installed beyond `pytest` itself (`python -m pip install pytest`, or `python -m pip install ".[test]"`):
-
 ```bash
+python -m pip install pytest
 python -m pytest                                  # serial suite
 mpirun -n 2 python -m pytest                      # the same under MPI
 mpirun -n 1 python -m pytest -m examples          # every example for one iteration
@@ -245,7 +242,7 @@ mpirun -n 2 python -m pytest -m examples
 mpirun -n 4 python -m pytest -m examples
 ```
 
-The suite checks the adjoint sensitivities against finite differences in 2D and 3D, the operator chain, the material models, the MMA calling convention, the postprocessors, and the first objective of every example against its recorded value at 1, 2 and 4 ranks. The same commands run on every push.
+The suite checks the adjoint sensitivities against finite differences in 2D and 3D, the operator chain, the material models, the MMA calling convention, the postprocessors, and the first objective of every example against its recorded value at 1, 2 and 4 ranks.
 
 ## Scope
 
