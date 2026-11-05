@@ -147,13 +147,12 @@ git clone https://github.com/CEADpx/matto.git
 cd matto
 conda env create -f environment.yml
 conda activate matto
-python -m pip install .
 
-python examples/Barrera2024_LCE/input_morphing_strip.py          # serial
-mpirun -n 4 python examples/hMSM/input_morphing_dome_3d.py       # parallel
+PYTHONPATH=src python examples/Barrera2024_LCE/input_morphing_strip.py          # serial
+PYTHONPATH=src mpirun -n 4 python examples/hMSM/input_morphing_dome_3d.py       # parallel
 ```
 
-Nothing needs the package installed: `PYTHONPATH=src python examples/...` runs an example from a clean checkout, and the tests put `src` on the path themselves. Install it only to use `matto` from outside this directory, and prefer `pip install .` to `pip install -e .`: an editable install points the environment at this working tree until it is uninstalled, so a half-finished edit, or a second checkout, is what gets imported.
+The package is not installed: `PYTHONPATH=src` puts the sources on the path for the one command, and the tests do the same for themselves, so a clean checkout runs as is and every edit is picked up at once. To use `matto` from another directory, `python -m pip install .`; not `-e`, since an editable install points the environment at this working tree until it is uninstalled.
 
 The output directory is set by `output_options` in each input script. A completed run writes:
 
