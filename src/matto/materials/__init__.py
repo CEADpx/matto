@@ -15,7 +15,10 @@ from .linear import LinearElastic
 from .mae import MagnetoActiveElastomer
 from .mae_aniso import AnisotropicMagnetoActiveElastomer
 from .interpolation import simp, two_phase
-from .kinematics import director, green_lagrange, isochoric_invariants, plane_strain_3d
+from .kinematics import (
+    director, green_lagrange, isochoric_invariants, plane_strain_3d,
+    polar_rotation,
+)
 from .testing import check_material
 
 __all__ = [
@@ -27,5 +30,6 @@ __all__ = [
     "AnisotropicMagnetoActiveElastomer",
     "simp", "two_phase",
     "director", "green_lagrange", "isochoric_invariants", "plane_strain_3d",
+    "polar_rotation",
     "check_material",
 ]

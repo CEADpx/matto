@@ -1,5 +1,6 @@
 # Restorative beam optimization
 # rho,  phi, and theta 
+import os
 from pathlib import Path
 
 import numpy as np
@@ -49,6 +50,11 @@ material_parameters = {     # Fixed parameters used to construct W
     # hMSM magnetic parameters
     "mu0": 1.256e3,          # Vacuum permeability [mT^2/kPa]
     "B_rem_mag": 200.0,      # Remanent magnetic flux density [mT]
+
+    # Map of the remanent magnetization: "F" (deformation gradient, the
+    # default) or "R" (rotation of the polar decomposition). Set the
+    # environment variable BEAM_MAGNETIZATION_MAP=R to run the "R" case.
+    "magnetization_map": os.environ.get("BEAM_MAGNETIZATION_MAP", "F"),
 }
 
 # ============================================================
@@ -290,7 +296,10 @@ optimization_options = {
 output_options = {
     "output_dir": str(
         Path(__file__).resolve().parent
-        / "results_Cantilever_TractionDown_Bup_MooneyN2"
+        / (
+            "results_Cantilever_TractionDown_Bup_MooneyN2"
+            + ("_RMap" if material_parameters["magnetization_map"] == "R" else "")
+        )
     ),
 
     "sim_output_interval": 25,

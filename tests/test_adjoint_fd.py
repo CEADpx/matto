@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 from mpi4py import MPI
 
+from matto.materials import HardMagneticSoftMaterial
 from tests.support import (
     BeamSession,
     build_beam_problem,
@@ -37,14 +38,39 @@ def _build_3d(comm, nx, ny, load_steps):
     return build_hmsm_beam_3d_problem(comm, nx, ny, ny, 2 * load_steps)
 
 
+def _with_rotation_map(problem):
+    parameters = dict(problem["material_parameters"], magnetization_map="R")
+    problem["material_parameters"] = parameters
+    problem["material"] = HardMagneticSoftMaterial(**parameters)
+    return problem
+
+
+def _build_rotation_map(comm, nx, ny, load_steps):
+    return _with_rotation_map(build_beam_problem(
+        comm, nx=nx, ny=ny, load_steps=load_steps
+    ))
+
+
+def _build_rotation_map_3d(comm, nx, ny, load_steps):
+    return _with_rotation_map(_build_3d(comm, nx, ny, load_steps))
+
+
 @pytest.mark.parametrize(
     ("build", "active_fields"),
     [
         (build_beam_problem, ("rho", "phi", "theta")),
         (build_mae_beam_problem, ("phi",)),
         (_build_3d, ("rho", "phi", "theta")),
+        (_build_rotation_map, ("rho", "phi", "theta")),
+        (_build_rotation_map_3d, ("rho", "phi", "theta")),
     ],
-    ids=["hmsm_three_fields", "mae_one_field", "hmsm_three_fields_3d"],
+    ids=[
+        "hmsm_three_fields",
+        "mae_one_field",
+        "hmsm_three_fields_3d",
+        "hmsm_rotation_map",
+        "hmsm_rotation_map_3d",
+    ],
 )
 def test_coarse_beam_adjoint_matches_finite_difference(build, active_fields):
     problem = use_direct_filter_solve(build(

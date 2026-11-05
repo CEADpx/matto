@@ -6,7 +6,7 @@ import ufl
 
 from .base import Material
 from .interpolation import simp
-from .kinematics import director
+from .kinematics import director, polar_rotation
 
 
 class HardMagneticSoftMaterial(Material):
@@ -15,7 +15,9 @@ class HardMagneticSoftMaterial(Material):
 
     The magnetic energy is linear in the applied flux density,
     -(1/mu0) phi (F B_rem) . B_app, with B_rem of fixed magnitude along
-    the design direction theta.
+    the design direction theta. With magnetization_map="R", F is
+    replaced by the rotation R of its polar decomposition, so the
+    remanent magnetization turns with the material but does not stretch.
 
     Fields: rho (density), phi (particle fraction), theta (remanent
     direction). Stimulus: B_app, the applied flux density vector.
@@ -33,6 +35,7 @@ class HardMagneticSoftMaterial(Material):
         "mu0": None,         # vacuum permeability
         "B_rem_mag": None,   # remanent flux density magnitude
         "dim": 2,
+        "magnetization_map": "F",   # "F" or "R"; see the class docstring
     }
 
     def __init__(self, **parameters):
@@ -40,6 +43,12 @@ class HardMagneticSoftMaterial(Material):
 
         if self.dim not in (2, 3):
             raise ValueError("HardMagneticSoftMaterial needs dim=2 or dim=3.")
+
+        if self.magnetization_map not in ("F", "R"):
+            raise ValueError(
+                "HardMagneticSoftMaterial needs magnetization_map='F' or "
+                f"'R', got {self.magnetization_map!r}."
+            )
 
         self.stimuli = {"B_app": (self.dim,)}
     reference = (
@@ -74,6 +83,11 @@ class HardMagneticSoftMaterial(Material):
         B_rem = self.B_rem_mag * director(theta_phys, dim=self.dim)
         phi_eff = rho_phys * phi_phys
 
-        W_magnetic = -(1.0 / self.mu0) * phi_eff * ufl.inner(F * B_rem, B_app)
+        if self.magnetization_map == "R":
+            B_mapped = polar_rotation(F) * B_rem
+        else:
+            B_mapped = F * B_rem
+
+        W_magnetic = -(1.0 / self.mu0) * phi_eff * ufl.inner(B_mapped, B_app)
 
         return W_elastic + W_magnetic
