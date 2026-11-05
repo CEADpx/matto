@@ -172,7 +172,7 @@ problem["postprocessors"] = [
 ]
 ```
 
-`SnapshotPlotter` draws each field in 2D and, in 3D, the material above a density threshold seen from chosen camera angles. Subclass it and override `draw()` for a picture of your own.
+`SnapshotPlotter` draws each field in 2D and, in 3D, the material above a density threshold seen from chosen camera angles. Subclass it and override `draw()` for a picture of your own, as [`input_morphing_dome_3d.py`](examples/hMSM/input_morphing_dome_3d.py) does.
 
 ## Defining a problem
 

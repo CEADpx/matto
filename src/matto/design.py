@@ -569,8 +569,9 @@ class DesignVariable:
 
             if np.any(held < self.lower_bound) or np.any(held > self.upper_bound):
                 raise ValueError(
-                    f"Fixed-region value {held} for design variable "
-                    f"'{name}' lies outside its bounds."
+                    f"Fixed-region values of design variable '{name}' lie in "
+                    f"[{np.min(held)}, {np.max(held)}], outside its bounds "
+                    f"[{self.lower_bound}, {self.upper_bound}]."
                 )
 
             self.held_raw.append((mask, held))
@@ -790,7 +791,7 @@ class DesignVariable:
     def get_values(self):
         """Return the current values of the free raw dofs."""
 
-        return self.free_part(self.raw.x.petsc_vec.array).copy()
+        return self.free_part(self.raw.x.petsc_vec.array)
 
     def get_lower_bounds(self):
         """Return the lower bounds of the free raw dofs."""
