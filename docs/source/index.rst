@@ -7,8 +7,9 @@ gradient-based optimization of structural density, material
 composition and material orientation, with the constitutive model kept
 apart from the optimization machinery. The supported material models
 are hard-magnetic soft materials, isotropic and anisotropic
-magneto-active elastomers, and liquid crystal elastomers; a new model is
-a class with a free-energy density.
+magneto-active elastomers, and liquid crystal elastomers, with a
+small-strain linear elastic model for comparison with FEniTop; a new
+model is a class with a free-energy density.
 
 Source and issues: `github.com/CEADpx/matto <https://github.com/CEADpx/matto>`_.
 

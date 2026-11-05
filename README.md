@@ -28,7 +28,7 @@ A particle-reinforced hyperelastic matrix with a magnetic potential energy that 
 <td width="58%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/assets/demo/hMSM_morphing_dome_3d_dark.gif"><img src="docs/assets/demo/hMSM_morphing_dome_3d_light.gif" width="100%" alt="Load-bearing morphing surface, 3D optimization"></picture></td>
 </tr>
 <tr>
-<td colspan="2"><b>Load-bearing morphing surface, 3D</b> · <a href="examples/hMSM/input_morphing_dome_3d.py"><code>input_morphing_dome_3d.py</code></a><br>Designs <code>rho</code>, <code>phi</code> and <code>theta</code> below a solid, non-magnetic skin so that the skin forms a 1 mm dome under a 200 mT field and holds it under 0.5 kPa. One quadrant is modeled, with symmetry conditions on its two inner faces, and the skin is held in all three fields. After 500 iterations the centre of the skin rises 0.986 mm, with a root-mean-square error of 0.005 mm against the target. The magnetization is kept cell-wise and unfiltered, since filtering an angle that turns once around the centre leaves a line where it points the wrong way.</td>
+<td colspan="2"><b>Load-bearing morphing surface, 3D</b> · <a href="examples/hMSM/input_morphing_dome_3d.py"><code>input_morphing_dome_3d.py</code></a><br>Designs <code>rho</code>, <code>phi</code> and <code>theta</code> below a solid, non-magnetic skin so that the skin forms a 1 mm dome under a 200 mT field and holds it under 0.5 kPa. One quadrant is modeled, with symmetry conditions on its two inner faces; <code>rho</code>, <code>phi</code> and <code>theta</code> are fixed in the skin. After 500 iterations the centre of the skin rises 0.986 mm, with a root-mean-square error of 0.005 mm against the target. The magnetization is kept cell-wise and unfiltered, since filtering an angle that turns once around the centre leaves a line where the magnetization points outward instead of inward.</td>
 </tr>
 <tr>
 <td width="42%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/assets/demo/hMSM_restorative_beam_setup_dark.png"><img src="docs/assets/demo/hMSM_restorative_beam_setup_light.png" width="100%" alt="Restorative beam setup"></picture></td>
@@ -169,7 +169,7 @@ problem["postprocessors"] = [
 ]
 ```
 
-`SnapshotPlotter` draws each field in 2D and, in 3D, the material above a density threshold seen from chosen camera angles. Subclass it and override `draw()` for a picture of your own, as [`input_morphing_dome_3d.py`](examples/hMSM/input_morphing_dome_3d.py) does.
+`SnapshotPlotter` draws each field in 2D and, in 3D, the material above a density threshold seen from chosen camera angles. Subclass it and override `draw()` to change what is drawn, as [`input_morphing_dome_3d.py`](examples/hMSM/input_morphing_dome_3d.py) does.
 
 ## Defining a problem
 

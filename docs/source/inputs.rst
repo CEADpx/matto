@@ -3,8 +3,7 @@ Writing an input file
 
 An input file is a Python script that assembles one ``problem``
 dictionary and hands it to :class:`matto.driver.OptimizationDriver`.
-The examples under ``examples/`` are the reference; the closest one to a
-new problem is the right starting point.
+The examples under ``examples/`` are complete input files.
 
 .. code-block:: python
 
