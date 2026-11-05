@@ -37,6 +37,37 @@ def _all_close(a, b):
     return COMM.allreduce(local, op=MPI.LAND)
 
 
+def test_dirichlet_condition_can_leave_a_component_free():
+    """A roller: u_x = 0 on the left edge, u_y free there but at one corner."""
+    from matto.driver import OptimizationDriver
+
+    problem = use_direct_filter_solve(build_beam_problem(COMM, nx=12, ny=3, load_steps=5))
+    problem["boundary_conditions"] = [
+        {
+            "name": "roller",
+            "on_boundary": lambda x: np.isclose(x[0], 0.0),
+            "value": (0.0, None),
+        },
+        {
+            "name": "corner",
+            "on_boundary": lambda x: np.isclose(x[0], 0.0) & np.isclose(x[1], 0.0),
+            "value": (None, 0.0),
+            "location": "geometrical",
+        },
+    ]
+    driver = OptimizationDriver(problem)
+    driver.solve_load_case(driver.load_cases[0])
+
+    u = driver.state.u_field.x.array.reshape(-1, 2)
+    x = driver.state.V.tabulate_dof_coordinates()
+    left = np.isclose(x[:, 0], 0.0)
+    assert np.allclose(u[left, 0], 0.0, atol=1e-14)
+
+    above_corner = left & ~np.isclose(x[:, 1], 0.0)
+    slid = bool(np.any(np.abs(u[above_corner, 1]) > 1e-8))
+    assert COMM.allreduce(slid, op=MPI.LOR)
+
+
 def test_repeated_evaluate_gives_the_same_gradients():
     session = _session()
     first = session.driver.evaluate()

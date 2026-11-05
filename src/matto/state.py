@@ -126,12 +126,11 @@ class StateProblem:
             name = bc_definition["name"]
             boundary_function = bc_definition["on_boundary"]
 
-            value = np.asarray(
-                bc_definition["value"],
-                dtype=PETSc.ScalarType,
-            )
+            # One value per displacement component; None leaves that
+            # component free, as on a symmetry plane.
+            value = tuple(bc_definition["value"])
 
-            if value.shape != (self.dim,):
+            if len(value) != self.dim:
                 raise ValueError(
                     f"Dirichlet boundary condition '{name}' must have "
                     f"a value with shape ({self.dim},)."
@@ -145,10 +144,19 @@ class StateProblem:
                     self.fdim,
                     boundary_function,
                 )
-                dofs = locate_dofs_topological(self.V, self.fdim, facets)
+
+                def locate(space):
+                    return locate_dofs_topological(space, self.fdim, facets)
 
             elif location in ("interior", "geometrical"):
-                dofs = fem.locate_dofs_geometrical(self.V, boundary_function)
+
+                def locate(space):
+                    if space is self.V:
+                        return fem.locate_dofs_geometrical(space, boundary_function)
+                    # A subspace is located together with its collapsed form.
+                    return fem.locate_dofs_geometrical(
+                        (space, space.collapse()[0]), boundary_function
+                    )[0]
 
             else:
                 raise ValueError(
@@ -156,8 +164,24 @@ class StateProblem:
                     f"boundary condition '{name}'."
                 )
 
-            bc_value = Constant(self.mesh, value)
-            self.bcs.append(dirichletbc(bc_value, dofs, self.V))
+            if None not in value:
+                bc_value = Constant(
+                    self.mesh, np.asarray(value, dtype=PETSc.ScalarType)
+                )
+                self.bcs.append(dirichletbc(bc_value, locate(self.V), self.V))
+                continue
+
+            for component, component_value in enumerate(value):
+                if component_value is None:
+                    continue
+                subspace = self.V.sub(component)
+                self.bcs.append(
+                    dirichletbc(
+                        PETSc.ScalarType(component_value),
+                        locate(subspace),
+                        subspace,
+                    )
+                )
 
     # ============================================================
     #  MEASURES AND TRACTION BOUNDARY MARKERS

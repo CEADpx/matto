@@ -69,8 +69,10 @@ What the dictionary holds
     position; those raw dofs are not optimization variables.
 
 ``boundary_conditions``, ``traction_boundaries``
-    Dirichlet conditions as ``{name, on_boundary, value}`` and named
-    facet sets on which load cases can apply tractions.
+    Dirichlet conditions as ``{name, on_boundary, value}``, with one
+    value per displacement component (``None`` leaves that component
+    free, as on a symmetry plane), and named facet sets on which load
+    cases can apply tractions.
 
 ``load_steps``, ``load_cases``
     Every load case is solved from the undeformed state, its body force,
