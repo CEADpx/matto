@@ -28,7 +28,7 @@ EXAMPLES = [
     ("examples/Garai2025_MAE/input_beam.py", 1.579665e01),
     ("examples/Garai2025_MAE/input_bridge.py", 1.011343e00),
     ("examples/Barrera2024_LCE/input_morphing_strip.py", 5.230147e-03),
-    ("examples/Barrera2024_LCE/input_pusher.py", 4.892502e-03),
+    ("examples/Barrera2024_LCE/input_pusher.py", 4.486427e-03),
     ("examples/Barrera2024_LCE/input_vertical_extension.py", 2.850635e-03),
 ]
 
@@ -115,4 +115,4 @@ def test_example_reaches_first_iteration(script, expected):
     objective = comm.bcast(objective, root=0)
 
     assert objective is not None, f"{script} did not print opt_iter: 1"
-    assert objective == pytest.approx(expected, rel=1.0e-3, abs=1.0e-3)
+    assert objective == pytest.approx(expected, rel=1.0e-3)
