@@ -422,7 +422,7 @@ class OptimizationDriver:
 
         self.design_vector_size = offset
 
-        if self.design_vector_size == 0:
+        if self.comm.allreduce(self.design_vector_size, op=MPI.SUM) == 0:
             raise ValueError(
                 "The active design vector is empty."
             )
