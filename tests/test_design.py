@@ -304,7 +304,8 @@ def test_mma_vector_holds_only_free_dofs():
         for name, variable in variables.items():
             after = variable.raw.x.petsc_vec.array
             assert np.array_equal(after[~variable.free], before[name][~variable.free])
-            free_change = max(free_change, float(np.max(np.abs(after - before[name]))))
+            width = variable.upper_bound - variable.lower_bound
+            free_change = max(free_change, float(np.max(np.abs(after - before[name]) / width)))
         free_change = COMM.allreduce(free_change, op=MPI.MAX)
 
         assert driver.change == pytest.approx(free_change, rel=1.0e-12)

@@ -108,7 +108,12 @@ What the dictionary holds
     the state block also takes the Newton tolerances.
 
 ``optimization_options``
-    ``max_iter``, ``opt_tol`` and the MMA ``move`` limit.
+    ``max_iter``, ``opt_tol`` and the MMA ``move`` limit. The run stops
+    when the largest change of a design variable in one iteration,
+    divided by the width of its bounds, is at most ``opt_tol`` and the
+    projection continuation has finished, or after ``max_iter``
+    iterations. ``move`` is the largest step in one iteration, also as a
+    fraction of the bound width.
 
 ``output_options``
     ``output_dir`` and ``sim_output_interval``.

@@ -61,7 +61,8 @@ def mma_optimizer(m, n, opt_iter, xval, xmin, xmax, xold1, xold2, df0dx, fval,
 
     Returns:
         x_new: Optimal values of the variables, x_j, in the current subproblem.
-        change: Maximum change of the variables, x_j.
+        change: Maximum change of the variables, x_j, divided by their
+            bound width xmax - xmin.
         low, upp: Lower and upper asymptotes calculated and used in the current subproblem.
     """
 
@@ -120,7 +121,7 @@ def mma_optimizer(m, n, opt_iter, xval, xmin, xmax, xold1, xold2, df0dx, fval,
     # Solve the subproblem with a primal-dual interior-point approach
     x_new = solve_subproblem(m, epsimin, low, upp, alpha, beta, p0, q0,
                              P_mat, Q_mat, a0, a, b, c, d, comm)
-    change = comm.allreduce(np.max(np.abs(x_new-xval), initial=0), op=MPI.MAX)
+    change = comm.allreduce(np.max(np.abs(x_new-xval)/xrange, initial=0), op=MPI.MAX)
     return x_new, change, low, upp
 
 
