@@ -17,9 +17,6 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 BEAM_LENGTH = 100.0
 BEAM_HEIGHT = 20.0
 
-# First printed objective of the committed 150 x 30 beam, load_steps=50.
-FULL_BEAM_FIRST_OBJECTIVE = 7.151557e02
-
 
 def _design_variable_specs():
     return {
