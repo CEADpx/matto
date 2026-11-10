@@ -224,7 +224,9 @@ def test_fixed_region_dofs_are_not_optimization_variables():
     variable = _variable(_mesh(), [{"type": "density_filter", "radius": 0.3}], [SKIN])
     fixed = ~variable.free
 
-    assert fixed.any() and variable.free.any()
+    # Over all ranks: one rank may own no fixed or no free dofs.
+    assert COMM.allreduce(fixed.any(), op=MPI.LOR)
+    assert COMM.allreduce(variable.free.any(), op=MPI.LOR)
     assert variable.free_size == variable.size - np.count_nonzero(fixed)
     assert variable.get_values().size == variable.free_size
     assert variable.get_lower_bounds().size == variable.free_size
