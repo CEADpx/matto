@@ -61,8 +61,8 @@ def mma_optimizer(m, n, opt_iter, xval, xmin, xmax, xold1, xold2, df0dx, fval,
 
     Returns:
         x_new: Optimal values of the variables, x_j, in the current subproblem.
-        change: Maximum change of the variables, x_j, divided by their
-            bound width xmax - xmin.
+        change: Maximum of abs(x_new - xval) / (xmax - xmin) over all
+            variables and MPI ranks.
         low, upp: Lower and upper asymptotes calculated and used in the current subproblem.
     """
 

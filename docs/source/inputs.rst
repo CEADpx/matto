@@ -109,11 +109,11 @@ What the dictionary holds
 
 ``optimization_options``
     ``max_iter``, ``opt_tol`` and the MMA ``move`` limit. The run stops
-    when the largest change of a design variable in one iteration,
-    divided by the width of its bounds, is at most ``opt_tol`` and the
-    projection continuation has finished, or after ``max_iter``
-    iterations. ``move`` is the largest step in one iteration, also as a
-    fraction of the bound width.
+    when the largest change of a free design dof in one iteration,
+    divided by the width of its bounds, is at most ``opt_tol`` and every
+    continuation schedule has finished, or after ``max_iter``
+    iterations. ``move`` is the largest step of a dof in one iteration,
+    also as a fraction of its bound width.
 
 ``output_options``
     ``output_dir`` and ``sim_output_interval``.

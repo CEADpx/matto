@@ -286,8 +286,8 @@ fem_options = {
     },
 }
 
-# The compliance has no lower bound here: past about 300 iterations the
-# magnets bend the beam against the load and the void cells collapse.
+# Stop at 300 iterations: longer runs bend the beam against the load and
+# the void cells collapse until the Newton solver fails.
 optimization_options = {
     "max_iter": 300,
     "opt_tol": 1.0e-3,
