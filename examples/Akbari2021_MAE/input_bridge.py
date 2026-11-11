@@ -185,7 +185,7 @@ design_variables = {
         # Mirrored +/-15-degree initialization preserves bridge symmetry.
         "active": True,
         "initial": initial_theta,
-        "bounds": (-np.pi / 2.0, np.pi / 2.0),
+        "bounds": (-np.pi, np.pi),
         "prescribed_value": 0.0,
         "operators": [
             {
@@ -354,8 +354,8 @@ fem_options = {
 }
 
 optimization_options = {
-    "max_iter": 100,
-    "opt_tol": 1.0e-5,
+    "max_iter": 400,
+    "opt_tol": 1.0e-3,
     "move": 0.02,
 }
 

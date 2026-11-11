@@ -100,7 +100,7 @@ design_variables = {
         # Particle-chain direction; initialized 15 degrees above +x.
         "active": True,
         "initial": np.deg2rad(15.0),
-        "bounds": (-np.pi / 2.0, np.pi / 2.0),
+        "bounds": (-np.pi, np.pi),
         "prescribed_value": 0.0,
         "operators": [
             {
@@ -252,9 +252,9 @@ fem_options = {
 }
 
 optimization_options = {
-    "max_iter": 50,
-    "opt_tol": 1.0e-5,
-    "move": 0.03,
+    "max_iter": 400,
+    "opt_tol": 1.0e-3,
+    "move": 0.02,
 }
 
 output_options = {

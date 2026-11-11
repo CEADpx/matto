@@ -218,7 +218,7 @@ design_variables = {
 
         "active": True,
         "initial": initial_theta,
-        "bounds": (-np.pi / 2.0, np.pi / 2.0),
+        "bounds": (-np.pi, np.pi),
         "prescribed_value": 0.0,
         "operators": [
             {
@@ -394,9 +394,9 @@ fem_options = {
 }
 
 optimization_options = {
-    "max_iter": 150,
-    "opt_tol": 1.0e-5,
-    "move": 0.03,
+    "max_iter": 400,
+    "opt_tol": 1.0e-3,
+    "move": 0.02,
 }
 
 output_options = {

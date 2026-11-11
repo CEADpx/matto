@@ -183,8 +183,8 @@ fem_options = {
 
 optimization_options = {
     "max_iter": 400,
-    "opt_tol": 1.0e-5,
-    "move": 0.05,
+    "opt_tol": 1.0e-3,
+    "move": 0.02,
 }
 
 output_options = {

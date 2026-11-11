@@ -118,7 +118,7 @@ design_variables = {
 
         # theta = 0 corresponds to the +x direction
         "initial": 0.0,
-        "bounds": (-np.pi, np.pi),
+        "bounds": (-2.0 * np.pi, 2.0 * np.pi),
 
         # Prescribed +x direction if theta is inactive
         "prescribed_value": 0.0,
@@ -287,9 +287,9 @@ fem_options = {
 }
 
 optimization_options = {
-    "max_iter": 100,
-    "opt_tol": 1.0e-5,
-    "move": 0.05,
+    "max_iter": 400,
+    "opt_tol": 1.0e-3,
+    "move": 0.02,
 }
 
 output_options = {

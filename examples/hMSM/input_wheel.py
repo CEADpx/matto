@@ -228,7 +228,7 @@ design_variables = {
         # theta = 0 gives the legacy initial remanence direction (+x).
         "active": True,
         "initial": 0.0,
-        "bounds": (-np.pi, np.pi),
+        "bounds": (-2.0 * np.pi, 2.0 * np.pi),
         "prescribed_value": 0.0,
         "operators": [
             {
@@ -429,9 +429,9 @@ fem_options = {
 }
 
 optimization_options = {
-    "max_iter": 100,
-    "opt_tol": 1.0e-5,
-    "move": 0.01,
+    "max_iter": 400,
+    "opt_tol": 1.0e-3,
+    "move": 0.02,
 }
 
 output_options = {

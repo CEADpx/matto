@@ -157,9 +157,7 @@ design_variables = {
         # design stays one-sided.
         "active": True,
         "initial": target_slope_angle,
-        # One turn, placed so that the inward direction along the plane
-        # y = 0 (theta = -pi) is not at a bound.
-        "bounds": (-1.5 * np.pi, 0.5 * np.pi),
+        "bounds": (-2.0 * np.pi, 2.0 * np.pi),
         # theta is cell-wise and unfiltered. A radial field has a line
         # where the angle jumps from pi to -pi; a filter averages the
         # two to 0, turns the magnetization outward along that line, and
@@ -339,10 +337,10 @@ fem_options = {
     },
 }
 
-# The change is that of the free raw dofs; the skin is not part of the
-# MMA vector.
+# The change is that of the free raw dofs, each divided by the width of
+# its bounds; the skin is not part of the MMA vector.
 optimization_options = {
-    "max_iter": 500,
+    "max_iter": 1000,
     "opt_tol": 1.0e-3,
     "move": 0.05,
 }

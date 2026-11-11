@@ -315,8 +315,8 @@ fem_options = {
 }
 
 optimization_options = {
-    "max_iter": 100,
-    "opt_tol": 1.0e-5,
+    "max_iter": 400,
+    "opt_tol": 1.0e-3,
     "move": 0.02,
 }
 
