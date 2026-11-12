@@ -234,7 +234,6 @@ MatTO
 ## Testing
 
 ```bash
-python -m pip install pytest
 python -m pytest                                  # serial suite
 mpirun -n 2 python -m pytest                      # the same under MPI
 mpirun -n 1 python -m pytest -m examples          # every example for one iteration

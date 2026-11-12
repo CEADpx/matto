@@ -9,6 +9,7 @@ dependencies:
   - mpich
   - scipy
   - matplotlib
+  - pytest
   - pip
 
   - pip:
